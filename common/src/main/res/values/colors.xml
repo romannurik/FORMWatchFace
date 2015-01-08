@@ -1,0 +1,39 @@
+<!--
+  Copyright 2014 Google Inc.
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+  -->
+
+<resources>
+
+    <color name="form_blue_dark">#2A36B1</color>
+    <color name="form_blue_mid">#02A8F3</color>
+    <color name="form_blue_light">#4EC2F6</color>
+
+    <color name="form_teal_dark">#00695C</color>
+    <color name="form_teal_mid">#009688</color>
+    <color name="form_teal_light">#4DB6AC</color>
+
+    <color name="form_red_dark">#A52714</color>
+    <color name="form_red_mid">#DB4437</color>
+    <color name="form_red_light">#E67C73</color>
+
+    <color name="form_yellow_dark">#F09300</color>
+    <color name="form_yellow_mid">#F4B400</color>
+    <color name="form_yellow_light">#F7CB4D</color>
+
+    <color name="form_gray_dark">#424242</color>
+    <color name="form_gray_mid">#9E9E9E</color>
+    <color name="form_gray_light">#BDBDBD</color>
+
+</resources>
