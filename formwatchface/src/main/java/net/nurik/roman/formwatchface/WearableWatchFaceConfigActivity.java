@@ -29,6 +29,7 @@ import android.view.ViewGroup;
 import android.widget.ImageView;
 
 import net.nurik.roman.formwatchface.common.ChangeConfigIntentService;
+import net.nurik.roman.formwatchface.common.MuzeiArtworkImageLoader;
 import net.nurik.roman.formwatchface.common.Themes;
 
 public class WearableWatchFaceConfigActivity extends Activity {
@@ -39,7 +40,12 @@ public class WearableWatchFaceConfigActivity extends Activity {
 
         WearableListView listView = (WearableListView) findViewById(R.id.wearable_list);
 
+        final boolean hasMuzeiArtwork = MuzeiArtworkImageLoader.hasMuzeiArtwork(this);
+
         listView.setAdapter(new WearableListView.Adapter() {
+            private static final int TYPE_NORMAL = 1;
+            private static final int TYPE_MUZEI = 2;
+
             @Override
             public WearableListView.ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
                 return new ItemViewHolder(LayoutInflater.from(WearableWatchFaceConfigActivity.this)
@@ -47,17 +53,28 @@ public class WearableWatchFaceConfigActivity extends Activity {
             }
 
             @Override
+            public int getItemViewType(int position) {
+                return (position >= Themes.THEMES.length) ? TYPE_MUZEI : TYPE_NORMAL;
+            }
+
+            @Override
             public void onBindViewHolder(WearableListView.ViewHolder holder, int position) {
                 ItemViewHolder itemHolder = (ItemViewHolder) holder;
-                Themes.Theme theme = Themes.THEMES[position];
-                ((GradientDrawable) itemHolder.circleView.getDrawable()).setColor(
-                        getResources().getColor(theme.darkRes));
+                Themes.Theme theme;
+                if (getItemViewType(position) == TYPE_MUZEI) {
+                    theme = Themes.MUZEI_THEME;
+                    itemHolder.circleView.setImageResource(R.drawable.muzei_icon);
+                } else {
+                    theme = Themes.THEMES[position];
+                    ((GradientDrawable) itemHolder.circleView.getDrawable()).setColor(
+                            getResources().getColor(theme.darkRes));
+                }
                 holder.itemView.setTag(theme.id);
             }
 
             @Override
             public int getItemCount() {
-                return Themes.THEMES.length;
+                return Themes.THEMES.length + (hasMuzeiArtwork ? 1 : 0);
             }
         });
 

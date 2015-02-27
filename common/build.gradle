@@ -37,5 +37,7 @@ android {
 
 dependencies {
     compile 'com.google.android.gms:play-services-wearable:6.5.87'
+    compile 'com.android.support:palette-v7:21.0.+'
+    compile 'com.google.android.apps.muzei:muzei-api:2.0'
     compile fileTree(dir: 'libs', include: ['*.jar'])
 }

@@ -19,9 +19,13 @@ package net.nurik.roman.formwatchface.common;
 import android.annotation.TargetApi;
 import android.content.Context;
 import android.content.res.TypedArray;
+import android.graphics.Bitmap;
+import android.graphics.BitmapShader;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.PointF;
+import android.graphics.Shader;
 import android.os.Build;
 import android.util.AttributeSet;
 import android.util.TypedValue;
@@ -36,7 +40,7 @@ import static net.nurik.roman.formwatchface.common.FormClockRenderer.TimeInfo;
 public class FormClockView extends View {
     private static final String TAG = "FormClockView";
 
-    private static final long BASE_TIME_MILLIS = new Date(2014, 1, 1, 12, 59, 49).getTime();
+    private static final long BASE_TIME_MILLIS = new Date(2015, 2, 22, 12, 59, 49).getTime();
     private static final long BOOT_TIME_MILLIS = System.currentTimeMillis();
 
     private FormClockRenderer mHourMinRenderer;
@@ -88,17 +92,8 @@ public class FormClockView extends View {
         options.glyphAnimAverageDelay = 500;
         options.glyphAnimDuration = 2000;
 
-        FormClockRenderer.ClockPaints paints = new FormClockRenderer.ClockPaints();
-        paints.paint1 = new Paint();
-        paints.paint1.setAntiAlias(true);
-        paints.paint1.setColor(a.getColor(R.styleable.FormClockView_color1, 0xff000000));
-        paints.paint2 = new Paint(paints.paint1);
-        paints.paint2.setColor(a.getColor(R.styleable.FormClockView_color2, 0xff888888));
-        paints.paint3 = new Paint(paints.paint1);
-        paints.paint3.setColor(a.getColor(R.styleable.FormClockView_color3, 0xffcccccc));
-
         // Set up renderers
-        mHourMinRenderer = new FormClockRenderer(options, paints);
+        mHourMinRenderer = new FormClockRenderer(options, null);
 
         options = new FormClockRenderer.Options(options);
         options.onlySeconds = true;
@@ -106,20 +101,32 @@ public class FormClockView extends View {
         options.glyphAnimAverageDelay = 0;
         options.glyphAnimDuration = 960;
 
-        mSecondsRenderer = new FormClockRenderer(options, paints);
+        mSecondsRenderer = new FormClockRenderer(options, null);
+
+        setColors(
+                a.getColor(R.styleable.FormClockView_color1, 0xff000000),
+                a.getColor(R.styleable.FormClockView_color2, 0xff888888),
+                a.getColor(R.styleable.FormClockView_color3, 0xffcccccc));
 
         a.recycle();
     }
 
     public void setColors(int color1, int color2, int color3) {
         FormClockRenderer.ClockPaints paints = new FormClockRenderer.ClockPaints();
-        paints.paint1 = new Paint();
-        paints.paint1.setAntiAlias(true);
-        paints.paint1.setColor(color1);
-        paints.paint2 = new Paint(paints.paint1);
-        paints.paint2.setColor(color2);
-        paints.paint3 = new Paint(paints.paint1);
-        paints.paint3.setColor(color3);
+        Paint paint = new Paint();
+        paint.setAntiAlias(true);
+
+        paint.setColor(color1);
+        paints.fills[0] = paint;
+
+        paint = new Paint(paint);
+        paint.setColor(color2);
+        paints.fills[1] = paint;
+
+        paint = new Paint(paint);
+        paint.setColor(color3);
+        paints.fills[2] = paint;
+
         mHourMinRenderer.setPaints(paints);
         mSecondsRenderer.setPaints(paints);
     }
@@ -162,7 +169,8 @@ public class FormClockView extends View {
         PointF hourMinSize = mHourMinRenderer.measure();
 
         mHourMinRenderer.setAnimTime(currentTimeMillis - mHourMinStartAnimTimeMillis);
-        mHourMinRenderer.draw(canvas, (mWidth - hourMinSize.x) / 2, (mHeight - hourMinSize.y) / 2);
+        mHourMinRenderer.draw(canvas, (mWidth - hourMinSize.x) / 2, (mHeight - hourMinSize.y) / 2,
+                true);
 
         mSecondsRenderer.setAnimTime(currentTimeMillis - mSecondsStartAnimTimeMillis);
 
@@ -172,7 +180,8 @@ public class FormClockView extends View {
                 (mWidth + hourMinSize.x) / 2 - secondsSize.x,
                 (mHeight + hourMinSize.y) / 2
                         + TypedValue.applyDimension(5, TypedValue.COMPLEX_UNIT_DIP,
-                        getResources().getDisplayMetrics()));
+                        getResources().getDisplayMetrics()),
+                true);
 
         postInvalidateOnAnimation();
     }
@@ -186,5 +195,12 @@ public class FormClockView extends View {
                 h == 0 ? 12 : h,
                 now.get(Calendar.MINUTE),
                 now.get(Calendar.SECOND));
+    }
+
+    public void syncWith(FormClockView clockView) {
+        mHourMinStartAnimTimeMillis = clockView.mHourMinStartAnimTimeMillis;
+        mSecondsStartAnimTimeMillis = clockView.mSecondsStartAnimTimeMillis;
+        mLastAnimatedCurrentTimeSec = clockView.mLastAnimatedCurrentTimeSec;
+        mFirstFrame = true;
     }
 }

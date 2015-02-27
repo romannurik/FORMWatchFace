@@ -33,6 +33,8 @@ public class Themes {
             new Theme("gray", R.color.form_gray_light, R.color.form_gray_mid, R.color.form_gray_dark),
     };
 
+    public static Theme MUZEI_THEME = new Theme("muzei", 0, 0, 0);
+
     public static final Theme DEFAULT_THEME = THEMES[0];
 
     static {
@@ -42,6 +44,10 @@ public class Themes {
     }
 
     public static Theme getThemeById(String id) {
+        if ("muzei".equals(id)) {
+            return MUZEI_THEME;
+        }
+
         return THEMES_BY_ID.get(id);
     }
 

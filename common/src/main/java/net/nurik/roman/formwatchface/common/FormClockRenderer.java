@@ -36,9 +36,8 @@ import static net.nurik.roman.formwatchface.common.MathUtil.interpolate;
 import static net.nurik.roman.formwatchface.common.MathUtil.progress;
 
 public class FormClockRenderer {
-    private static final String DEBUG_TIME = null;//"1234567890";
+    private static final String DEBUG_TIME = null;//"0123456789";
     private static final String DEBUG_GLYPH = null;//"2_3";
-    private static final boolean OFFSCREEN_GYLPHS = true;
     private static final boolean DEBUG_SHOW_RECTS = false;
 
     private ArrayList<Integer> mAnimatedGlyphIndices = new ArrayList<>();
@@ -75,10 +74,6 @@ public class FormClockRenderer {
     }
 
     private void initGlyphBitmap() {
-        if (!OFFSCREEN_GYLPHS) {
-            return;
-        }
-
         mOffsGlyphBitmapUnpaddedSize = Font.DRAWHEIGHT * 5;
         while (mOptions.textSize < mOffsGlyphBitmapUnpaddedSize) {
             int newUnpaddedSize = mOffsGlyphBitmapUnpaddedSize;
@@ -177,8 +172,8 @@ public class FormClockRenderer {
         }
     }
 
-    public void draw(final Canvas canvas, float left, float top) {
-        mFont.canvas = OFFSCREEN_GYLPHS ? mOffsGlyphCanvas : canvas;
+    public void draw(final Canvas canvas, float left, float top, final boolean offscreenGlyphs) {
+        mFont.canvas = offscreenGlyphs ? mOffsGlyphCanvas : canvas;
 
         int sc = canvas.save();
         canvas.translate(left, top);
@@ -188,7 +183,14 @@ public class FormClockRenderer {
             public void visitGlyph(Glyph glyph, float glyphAnimProgress, RectF rect) {
                 int sc;
 
-                if (OFFSCREEN_GYLPHS) {
+                if (glyphAnimProgress == 0) {
+                    glyph = mFont.mGlyphMap.get(glyph.getCanonicalStartGlyph());
+                } else if (glyphAnimProgress == 1) {
+                    glyph = mFont.mGlyphMap.get(glyph.getCanonicalEndGlyph());
+                    glyphAnimProgress = 0;
+                }
+
+                if (offscreenGlyphs) {
                     mOffsGlyphBitmap.eraseColor(Color.TRANSPARENT);
                     sc = mOffsGlyphCanvas.save();
                     mOffsGlyphCanvas.translate(
@@ -197,7 +199,7 @@ public class FormClockRenderer {
                     mOffsGlyphCanvas.scale(
                             mOffsGlyphBitmapUnpaddedSize * 1f / Font.DRAWHEIGHT,
                             mOffsGlyphBitmapUnpaddedSize * 1f / Font.DRAWHEIGHT);
-                    glyph.draw(glyphAnimProgress); // draws into mOffsGlyphCanvas
+                    glyph.draw(glyphAnimProgress);
                     mOffsGlyphCanvas.restoreToCount(sc);
                 }
 
@@ -208,9 +210,9 @@ public class FormClockRenderer {
                 sc = canvas.save();
                 canvas.translate(rect.left, rect.top);
                 float scale = mOptions.textSize /
-                        (OFFSCREEN_GYLPHS ? mOffsGlyphBitmapUnpaddedSize : Font.DRAWHEIGHT);
+                        (offscreenGlyphs ? mOffsGlyphBitmapUnpaddedSize : Font.DRAWHEIGHT);
                 canvas.scale(scale, scale);
-                if (OFFSCREEN_GYLPHS) {
+                if (offscreenGlyphs) {
                     canvas.translate(-mOffsGlyphBitmapUnpaddedSize / 2, -mOffsGlyphBitmapUnpaddedSize / 2);
                     canvas.drawBitmap(mOffsGlyphBitmap, 0, 0, mOffsGlyphPaint);
                 } else {
@@ -411,14 +413,16 @@ public class FormClockRenderer {
     }
 
     public static class ClockPaints {
-        public Paint paint1;
-        public Paint paint2;
-        public Paint paint3;
+        public Paint fills[] = new Paint[3];
+        public Paint strokes[] = new Paint[3]; // optional
+        public boolean hasStroke = false;
     }
 
     public interface Glyph {
         void draw(float t);
         float getWidthAtProgress(float t);
+        String getCanonicalStartGlyph();
+        String getCanonicalEndGlyph();
     }
 
     /**
@@ -426,6 +430,10 @@ public class FormClockRenderer {
      */
     private class Font {
         private static final int DRAWHEIGHT = 144;
+
+        private static final int COLOR_1 = 0;
+        private static final int COLOR_2 = 1;
+        private static final int COLOR_3 = 2;
 
         private Map<String, Glyph> mGlyphMap = new HashMap<>();
 
@@ -448,32 +456,81 @@ public class FormClockRenderer {
             canvas.scale(s, s, px, py);
         }
 
-        // API 21 compat
+        /*
+            API 21 compat methods
+         */
+
         private void arcTo(float l, float t, float r, float b, float startAngle, float sweepAngle, boolean forceMoveTo) {
             tempRectF.set(l, t, r, b);
             path.arcTo(tempRectF, startAngle, sweepAngle, forceMoveTo);
         }
 
-        // API 21 compat
         private void drawArc(float l, float t, float r, float b, float startAngle, float sweepAngle, boolean useCenter, Paint paint) {
             tempRectF.set(l, t, r, b);
             canvas.drawArc(tempRectF, startAngle, sweepAngle, useCenter, paint);
         }
 
-        // API 21 compat
         private void drawRoundRect(float l, float t, float r, float b, float rx, float ry, Paint paint) {
             tempRectF.set(l, t, r, b);
             canvas.drawRoundRect(tempRectF, rx, ry, paint);
         }
 
-        // API 21 compat
         private void drawOval(float l, float t, float r, float b, Paint paint) {
             tempRectF.set(l, t, r, b);
             canvas.drawOval(tempRectF, paint);
         }
 
+        /*
+            Stroke + fill drawing wrappers
+         */
+
+        private void drawArc(float l, float t, float r, float b, float startAngle, float sweepAngle, boolean useCenter, int color) {
+            drawArc(l, t, r, b, startAngle, sweepAngle, useCenter, mPaints.fills[color]);
+            if (mPaints.hasStroke) {
+                drawArc(l, t, r, b, startAngle, sweepAngle, useCenter, mPaints.strokes[color]);
+            }
+        }
+
+        private void drawRoundRect(float l, float t, float r, float b, float rx, float ry, int color) {
+            drawRoundRect(l, t, r, b, rx, ry, mPaints.fills[color]);
+            if (mPaints.hasStroke) {
+                drawRoundRect(l, t, r, b, rx, ry, mPaints.strokes[color]);
+            }
+        }
+
+        private void drawOval(float l, float t, float r, float b, int color) {
+            drawOval(l, t, r, b, mPaints.fills[color]);
+            if (mPaints.hasStroke) {
+                drawOval(l, t, r, b, mPaints.strokes[color]);
+            }
+        }
+
+        private void drawRect(float l, float t, float r, float b, int color) {
+            canvas.drawRect(l, t, r, b, mPaints.fills[color]);
+            if (mPaints.hasStroke) {
+                canvas.drawRect(l, t, r, b, mPaints.strokes[color]);
+            }
+        }
+
+        private void drawPath(Path path, int color) {
+            canvas.drawPath(path, mPaints.fills[color]);
+            if (mPaints.hasStroke) {
+                canvas.drawPath(path, mPaints.strokes[color]);
+            }
+        }
+
         private void initGlyphs() {
             mGlyphMap.put("0_1", new Glyph() {
+                @Override
+                public String getCanonicalStartGlyph() {
+                    return "0";
+                }
+
+                @Override
+                public String getCanonicalEndGlyph() {
+                    return "1";
+                }
+
                 @Override
                 public void draw(float t) {
                     float d1 = decelerate5(progress(t, 0, 0.5f));
@@ -498,23 +555,23 @@ public class FormClockRenderer {
                     path.lineTo(72 + stretchX, 144);
                     path.lineTo(72 - stretchX, 144);
                     path.close();
-                    canvas.drawPath(path, mPaints.paint2);
+                    drawPath(path, COLOR_2);
 
                     path.reset();
                     arcTo(stretchX, 0, 144 + stretchX, 144, -90, 180, true);
                     path.close();
-                    canvas.drawPath(path, mPaints.paint3);
+                    drawPath(path, COLOR_3);
 
                     canvas.restore();
 
                     // 1
                     if (d2 > 0) {
-                        canvas.drawRect(
+                        drawRect(
                                 interpolate(d2, 28, 0), interpolate(d2, 72, 0), 100, interpolate(d2, 144, 48),
-                                mPaints.paint2);
+                                COLOR_2);
 
-                        canvas.drawRect(28, interpolate(d2, 144, 48), 100, 144,
-                                mPaints.paint3);
+                        drawRect(28, interpolate(d2, 144, 48), 100, 144,
+                                COLOR_3);
                     }
                 }
 
@@ -527,6 +584,16 @@ public class FormClockRenderer {
             });
 
             mGlyphMap.put("1_2", new Glyph() {
+                @Override
+                public String getCanonicalStartGlyph() {
+                    return "1";
+                }
+
+                @Override
+                public String getCanonicalEndGlyph() {
+                    return "2";
+                }
+
                 @Override
                 public void draw(float t) {
                     float d = 1 - decelerate5(progress(t, 0, 0.5f));
@@ -542,7 +609,7 @@ public class FormClockRenderer {
                         path.lineTo(72, 72);
                         path.lineTo(72, 144);
                         path.lineTo(0, 144);
-                        canvas.drawPath(path, mPaints.paint3);
+                        drawPath(path, COLOR_3);
                         canvas.restore();
 
                         canvas.save();
@@ -550,23 +617,23 @@ public class FormClockRenderer {
                         //ctx.fillStyle = interpolateColors(d2, o.color2, o.color1);
                         canvas.translate(108, interpolate(d1, 72, 0));
                         //drawHorzHalfCircle(0, 0, 36, 72, true);
-                        drawArc(-36, 0, 36, 72, -90, 180, true, mPaints.paint2);
+                        drawArc(-36, 0, 36, 72, -90, 180, true, COLOR_1);
                         canvas.restore();
 
                         canvas.save();
                         canvas.translate(0, interpolate(d1, 72, 0));
-                        canvas.drawRect(interpolate(d2, 72, 8), 0, interpolate(d2, 144, 108), 72, mPaints.paint1);
+                        drawRect(interpolate(d2, 72, 8), 0, interpolate(d2, 144, 108), 72, COLOR_1);
                         canvas.restore();
 
-                        canvas.drawRect(72, 72, 144, 144, mPaints.paint2);
+                        drawRect(72, 72, 144, 144, COLOR_2);
                     }
 
                     // 1
                     if (d > 0) {
                         canvas.save();
                         canvas.translate(interpolate(d, 44, 0), 0);
-                        canvas.drawRect(interpolate(d, 28, 0), interpolate(d, 72, 0), 100, interpolate(d, 144, 48), mPaints.paint2);
-                        canvas.drawRect(28, interpolate(d, 144, 48), 100, 144, mPaints.paint3);
+                        drawRect(interpolate(d, 28, 0), interpolate(d, 72, 0), 100, interpolate(d, 144, 48), COLOR_2);
+                        drawRect(28, interpolate(d, 144, 48), 100, 144, COLOR_3);
                         canvas.restore();
                     }
                 }
@@ -578,6 +645,16 @@ public class FormClockRenderer {
             });
 
             mGlyphMap.put("2_3", new Glyph() {
+                @Override
+                public String getCanonicalStartGlyph() {
+                    return "2";
+                }
+
+                @Override
+                public String getCanonicalEndGlyph() {
+                    return "3";
+                }
+
                 @Override
                 public void draw(float t) {
                     float d = decelerate5(progress(t, 0, 0.5f));
@@ -595,20 +672,29 @@ public class FormClockRenderer {
                         path.lineTo(72, 72);
                         path.lineTo(72, 144);
                         path.lineTo(0, 144);
-                        canvas.drawPath(path, mPaints.paint3);
+                        drawPath(path, COLOR_3);
                         canvas.restore();
 
-                        canvas.save();
-                        canvas.translate(0, interpolate(d, 0, 72));
                         // TODO: interpolateColors
                         //.fillStyle = interpolateColors(d, o.color1, o.color2);
-                        canvas.translate(108, 0);
-                        drawArc(-36, 0, 36, 72, -90, 180, true, mPaints.paint2);
-                        canvas.restore();
-
-                        canvas.drawRect(interpolate(d, 8, 72), interpolate(d, 0, 72),
-                                interpolate(d, 108, 144), interpolate(d, 72, 144), mPaints.paint1);
-                        canvas.drawRect(72, 72, 144, 144, mPaints.paint2);
+                        if (d == 0) {
+                            path.reset();
+                            path.moveTo(8, 0);
+                            path.lineTo(108, 0);
+                            arcTo(108 - 36, 0, 108 + 36, 72, -90, 180, true);
+                            path.lineTo(108, 72);
+                            path.lineTo(8, 72);
+                            path.lineTo(8, 0);
+                            path.close();
+                            drawPath(path, COLOR_1);
+                        } else {
+                            drawArc(108 - 36, interpolate(d, 0, 72),
+                                    108 + 36, 72 + interpolate(d, 0, 72),
+                                    -90, 180, true, COLOR_1);
+                            drawRect(interpolate(d, 8, 72), interpolate(d, 0, 72),
+                                    interpolate(d, 108, 144), interpolate(d, 72, 144), COLOR_1);
+                        }
+                        drawRect(72, 72, 144, 144, COLOR_2);
 
                         canvas.restore();
                     } else {
@@ -616,13 +702,13 @@ public class FormClockRenderer {
                         // half-circle
                         canvas.save();
                         scaleUniform(interpolate(d1, 0.7f, 1), 128, 144);
-                        drawArc(32, 48, 128, 144, -90, 180, true, mPaints.paint3);
+                        drawArc(32, 48, 128, 144, -90, 180, true, COLOR_3);
                         canvas.restore();
 
                         // bottom rectangle
-                        canvas.drawRect(
+                        drawRect(
                                 interpolate(d1, 56, 0), interpolate(d1, 72, 96),
-                                interpolate(d1, 128, 80), interpolate(d1, 144, 144), mPaints.paint1);
+                                interpolate(d1, 128, 80), interpolate(d1, 144, 144), COLOR_1);
 
                         // top part with triangle
                         canvas.save();
@@ -631,17 +717,18 @@ public class FormClockRenderer {
                         path.moveTo(128, 0);
                         path.lineTo(80, 48);
                         path.lineTo(80, 0);
-                        canvas.drawPath(path, mPaints.paint3);
-                        canvas.drawRect(
+                        path.close();
+                        drawPath(path, COLOR_3);
+                        drawRect(
                                 interpolate(d1, 56, 0), 0,
-                                interpolate(d1, 128, 80), interpolate(d1, 72, 48), mPaints.paint3);
+                                interpolate(d1, 128, 80), interpolate(d1, 72, 48), COLOR_3);
                         canvas.restore();
 
                         // middle rectangle
                         canvas.save();
-                        canvas.drawRect(
+                        drawRect(
                                 interpolate(d1, 56, 32), interpolate(d1, 72, 48),
-                                interpolate(d1, 128, 80), interpolate(d1, 144, 96), mPaints.paint2);
+                                interpolate(d1, 128, 80), interpolate(d1, 144, 96), COLOR_2);
                         canvas.restore();
                     }
                 }
@@ -654,6 +741,16 @@ public class FormClockRenderer {
 
             mGlyphMap.put("3_4", new Glyph() {
                 @Override
+                public String getCanonicalStartGlyph() {
+                    return "3";
+                }
+
+                @Override
+                public String getCanonicalEndGlyph() {
+                    return "4";
+                }
+
+                @Override
                 public void draw(float t) {
                     float d1 = 1 - decelerate5(progress(t, 0, 0.5f));
                     float d2 = decelerate5(progress(t, 0.5f, 1));
@@ -665,43 +762,52 @@ public class FormClockRenderer {
 
                         // middle rectangle
                         canvas.save();
-                        canvas.drawRect(
+                        drawRect(
                                 interpolate(d1, 56, 32), interpolate(d1, 72, 48),
-                                interpolate(d1, 128, 80), interpolate(d1, 144, 96), mPaints.paint2);
+                                interpolate(d1, 128, 80), interpolate(d1, 144, 96), COLOR_2);
                         canvas.restore();
 
                         // half-circle
                         canvas.save();
                         scaleUniform(interpolate(d1, 0.7f, 1), 128, 144);
-                        drawArc(32, 48, 128, 144, -90, 180, true, mPaints.paint3);
+                        drawArc(32, 48, 128, 144, -90, 180, true, COLOR_3);
                         canvas.restore();
 
                         // bottom rectangle
-                        canvas.drawRect(
+                        drawRect(
                                 interpolate(d1, 56, 0), interpolate(d1, 72, 96),
-                                interpolate(d1, 128, 80), interpolate(d1, 144, 144), mPaints.paint1);
+                                interpolate(d1, 128, 80), interpolate(d1, 144, 144), COLOR_1);
 
                         // top part with triangle
                         canvas.save();
                         canvas.translate(0, interpolate(d1, 72, 0));
                         path.reset();
-                        path.moveTo(128, 0);
+                        path.moveTo(80, 0);
+                        path.lineTo(128, 0);
                         path.lineTo(80, 48);
-                        path.lineTo(80, 0);
-                        canvas.drawPath(path, mPaints.paint3);
-                        canvas.drawRect(
-                                interpolate(d1, 56, 0), 0,
-                                interpolate(d1, 128, 80), interpolate(d1, 72, 48), mPaints.paint3);
+                        if (d1 == 1) {
+                            path.lineTo(0, 48);
+                            path.lineTo(0, 0);
+                            path.lineTo(80, 0);
+                            path.close();
+                            drawPath(path, COLOR_3);
+                        } else {
+                            path.close();
+                            drawPath(path, COLOR_3);
+                            drawRect(
+                                    interpolate(d1, 56, 0), 0,
+                                    interpolate(d1, 128, 80), interpolate(d1, 72, 48), COLOR_3);
+                        }
                         canvas.restore();
 
                         canvas.restore();
                     } else {
                         // 4
                         // bottom rectangle
-                        canvas.drawRect(72, interpolate(d2, 144, 108), 144, 144, mPaints.paint2);
+                        drawRect(72, interpolate(d2, 144, 108), 144, 144, COLOR_2);
 
                         // middle rectangle
-                        canvas.drawRect(interpolate(d2, 72, 0), interpolate(d2, 144, 72), 144, interpolate(d2, 144, 108), mPaints.paint1);
+                        drawRect(interpolate(d2, 72, 0), interpolate(d2, 144, 72), 144, interpolate(d2, 144, 108), COLOR_1);
 
                         // triangle
                         canvas.save();
@@ -711,12 +817,12 @@ public class FormClockRenderer {
                         path.lineTo(72, 0);
                         path.lineTo(0, 72);
                         path.lineTo(72, 72);
-                        canvas.drawPath(path, mPaints.paint2);
+                        drawPath(path, COLOR_2);
 
                         canvas.restore();
 
                         // top rectangle
-                        canvas.drawRect(72, interpolate(d2, 72, 0), 144, interpolate(d2, 144, 72), mPaints.paint3);
+                        drawRect(72, interpolate(d2, 72, 0), 144, interpolate(d2, 144, 72), COLOR_3);
                     }
                 }
 
@@ -728,6 +834,16 @@ public class FormClockRenderer {
 
             mGlyphMap.put("4_5", new Glyph() {
                 @Override
+                public String getCanonicalStartGlyph() {
+                    return "4";
+                }
+
+                @Override
+                public String getCanonicalEndGlyph() {
+                    return "5";
+                }
+
+                @Override
                 public void draw(float t) {
                     float d = decelerate5(progress(t, 0, 0.5f));
                     float d1 = decelerate5(progress(t, 0.5f, 1));
@@ -735,11 +851,11 @@ public class FormClockRenderer {
                     // 4
                     if (d < 1) {
                         // bottom rectangle
-                        canvas.drawRect(interpolate(d, 72, 0), 108, interpolate(d, 144, 72), 144, mPaints.paint2);
+                        drawRect(interpolate(d, 72, 0), 108, interpolate(d, 144, 72), 144, COLOR_2);
 
                         // top rectangle
-                        canvas.drawRect(interpolate(d, 72, 0), interpolate(d, 0, 72),
-                                interpolate(d, 144, 72), interpolate(d, 72, 144), mPaints.paint3);
+                        drawRect(interpolate(d, 72, 0), interpolate(d, 0, 72),
+                                interpolate(d, 144, 72), interpolate(d, 72, 144), COLOR_3);
 
                         // triangle
                         canvas.save();
@@ -749,36 +865,36 @@ public class FormClockRenderer {
                         path.lineTo(72, 0);
                         path.lineTo(0, 72);
                         path.lineTo(72, 72);
-                        canvas.drawPath(path, mPaints.paint2);
+                        drawPath(path, COLOR_2);
 
                         canvas.restore();
 
                         // middle rectangle
-                        canvas.drawRect(0, 72,
-                                interpolate(d, 144, 72), interpolate(d, 108, 144), mPaints.paint1);
+                        drawRect(0, 72,
+                                interpolate(d, 144, 72), interpolate(d, 108, 144), COLOR_1);
                     } else {
                         // 5
                         // wing rectangle
                         canvas.save();
-                        canvas.drawRect(
+                        drawRect(
                                 80, interpolate(d1, 72, 0),
-                                interpolate(d1, 80, 128), interpolate(d1, 144, 48), mPaints.paint2);
+                                interpolate(d1, 80, 128), interpolate(d1, 144, 48), COLOR_2);
                         canvas.restore();
 
                         // half-circle
                         canvas.save();
                         scaleUniform(interpolate(d1, 0.75f, 1), 0, 144);
                         canvas.translate(interpolate(d1, -48, 0), 0);
-                        drawArc(32, 48, 128, 144, -90, 180, true, mPaints.paint3);
+                        drawArc(32, 48, 128, 144, -90, 180, true, COLOR_3);
                         canvas.restore();
 
                         // bottom rectangle
-                        canvas.drawRect(0, 96, 80, 144, mPaints.paint2);
+                        drawRect(0, 96, 80, 144, COLOR_2);
 
                         // middle rectangle
-                        canvas.drawRect(
+                        drawRect(
                                 0, interpolate(d1, 72, 0),
-                                80, interpolate(d1, 144, 96), mPaints.paint1);
+                                80, interpolate(d1, 144, 96), COLOR_1);
                     }
                 }
 
@@ -790,6 +906,16 @@ public class FormClockRenderer {
 
             mGlyphMap.put("5_6", new Glyph() {
                 @Override
+                public String getCanonicalStartGlyph() {
+                    return "5";
+                }
+
+                @Override
+                public String getCanonicalEndGlyph() {
+                    return "6";
+                }
+
+                @Override
                 public void draw(float t) {
                     float d = decelerate5(progress(t, 0, 0.7f));
                     float d1 = decelerate5(progress(t, 0.1f, 1));
@@ -800,13 +926,13 @@ public class FormClockRenderer {
                         scaleUniform(interpolate(d, 1, 0.25f), 108, 96);
 
                         // wing rectangle
-                        canvas.drawRect(80, 0, 128, 48, mPaints.paint2);
+                        drawRect(80, 0, 128, 48, COLOR_2);
 
                         // bottom rectangle
-                        canvas.drawRect(0, 96, 80, 144, mPaints.paint2);
+                        drawRect(0, 96, 80, 144, COLOR_2);
 
                         // middle rectangle
-                        canvas.drawRect(0, 0, 80, 96, mPaints.paint1);
+                        drawRect(0, 0, 80, 96, COLOR_1);
 
                         canvas.restore();
                     }
@@ -815,11 +941,18 @@ public class FormClockRenderer {
                     canvas.save();
 
                     canvas.rotate(interpolate(d1, 0, 90), 72, 72);
-                    scaleUniform(interpolate(d1, 2f / 3, 1), 80, 144);
-                    canvas.translate(interpolate(d1, 8, 0), 0);
-                    drawArc(
-                            0, 0,
-                            144, 144, -90, 180, true, mPaints.paint3);
+
+                    if (d1 == 0) {
+                        drawArc(
+                                32, 48,
+                                128, 144, -90, 180, true, COLOR_3);
+                    } else {
+                        scaleUniform(interpolate(d1, 2f / 3, 1), 80, 144);
+                        canvas.translate(interpolate(d1, 8, 0), 0);
+                        drawArc(
+                                0, 0,
+                                144, 144, -90, 180, true, COLOR_3);
+                    }
 
                     // 6 (just the parallelogram)
                     if (d1 > 0) {
@@ -831,7 +964,7 @@ public class FormClockRenderer {
                         path.lineTo(interpolate(d1, 72, 108), interpolate(d1, 72, 0));
                         path.lineTo(72, 72);
                         path.lineTo(0, 72);
-                        canvas.drawPath(path, mPaints.paint2);
+                        drawPath(path, COLOR_2);
 
                         canvas.restore();
                     }
@@ -847,11 +980,21 @@ public class FormClockRenderer {
 
             mGlyphMap.put("6_7", new Glyph() {
                 @Override
+                public String getCanonicalStartGlyph() {
+                    return "6";
+                }
+
+                @Override
+                public String getCanonicalEndGlyph() {
+                    return "7";
+                }
+
+                @Override
                 public void draw(float t) {
                     float d = decelerate5(t);
 
                     // 7 rectangle
-                    canvas.drawRect(interpolate(d, 72, 0), 0, 72, 72, mPaints.paint3);
+                    drawRect(interpolate(d, 72, 0), 0, 72, 72, COLOR_3);
 
                     // 6 circle
                     canvas.save();
@@ -861,7 +1004,7 @@ public class FormClockRenderer {
                     if (d < 1) {
                         drawArc(0, 0, 144, 144,
                                 interpolate(d, 180, -64f),
-                                -180, true, mPaints.paint3);
+                                -180, true, COLOR_3);
                     }
 
                     // parallelogram
@@ -870,7 +1013,8 @@ public class FormClockRenderer {
                     path.lineTo(108, 0);
                     path.lineTo(interpolate(d, 72, 36), interpolate(d, 72, 144));
                     path.lineTo(interpolate(d, 0, -36), interpolate(d, 72, 144));
-                    canvas.drawPath(path, mPaints.paint2);
+                    path.close();
+                    drawPath(path, COLOR_2);
 
                     canvas.restore();
                 }
@@ -883,6 +1027,16 @@ public class FormClockRenderer {
 
             mGlyphMap.put("7_8", new Glyph() {
                 @Override
+                public String getCanonicalStartGlyph() {
+                    return "7";
+                }
+
+                @Override
+                public String getCanonicalEndGlyph() {
+                    return "8";
+                }
+
+                @Override
                 public void draw(float t) {
                     float d = decelerate5(progress(t, 0, 0.5f));
                     float d1 = decelerate5(progress(t, 0.2f, 0.5f));
@@ -894,7 +1048,7 @@ public class FormClockRenderer {
                             // top
                             canvas.save();
                             canvas.translate(0, interpolate(d2, 96, 0));
-                            drawRoundRect(24, 0, 120, 48, 24, 24, mPaints.paint3);
+                            drawRoundRect(24, 0, 120, 48, 24, 24, COLOR_3);
                             canvas.restore();
                         }
 
@@ -902,29 +1056,29 @@ public class FormClockRenderer {
                         canvas.save();
                         canvas.translate(interpolate(d1, 24, 0), 0);
                         scaleUniform(interpolate(d2, 0.5f, 1), 48, 144);
-                        drawArc(0, 48, 96, 144, 90, 180, true, mPaints.paint1);
+                        drawArc(0, 48, 96, 144, 90, 180, true, COLOR_1);
                         canvas.restore();
 
                         // right bottom
                         canvas.save();
                         canvas.translate(interpolate(d1, -24, 0), 0);
                         scaleUniform(interpolate(d2, 0.5f, 1), 96, 144);
-                        drawArc(48, 48, 144, 144, -90, 180, true, mPaints.paint2);
+                        drawArc(48, 48, 144, 144, -90, 180, true, COLOR_2);
                         canvas.restore();
 
                         // bottom middle
                         canvas.save();
                         canvas.scale(interpolate(d1, 0, 1), 1, 72, 0);
-                        canvas.drawRect(48, interpolate(d2, 96, 48), 96, 144, mPaints.paint1);
-                        canvas.drawRect(interpolate(d2, 48, 96), interpolate(d2, 96, 48), 96, 144, mPaints.paint2);
+                        drawRect(48, interpolate(d2, 96, 48), 96, 144, COLOR_1);
+                        drawRect(interpolate(d2, 48, 96), interpolate(d2, 96, 48), 96, 144, COLOR_2);
                         canvas.restore();
                     }
 
                     if (d < 1) {
                         // 7 rectangle
-                        canvas.drawRect(
+                        drawRect(
                                 interpolate(d, 0, 48), interpolate(d, 0, 96),
-                                interpolate(d, 72, 96), interpolate(d, 72, 144), mPaints.paint3);
+                                interpolate(d, 72, 96), interpolate(d, 72, 144), COLOR_3);
 
                         // 7 parallelogram
                         path.reset();
@@ -932,7 +1086,8 @@ public class FormClockRenderer {
                         path.lineTo(interpolate(d, 144, 96), interpolate(d, 0, 96));
                         path.lineTo(interpolate(d, 72, 96), 144);
                         path.lineTo(interpolate(d, 0, 48), 144);
-                        canvas.drawPath(path, mPaints.paint2);
+                        path.close();
+                        drawPath(path, COLOR_2);
 
                     }
                 }
@@ -945,6 +1100,16 @@ public class FormClockRenderer {
 
             mGlyphMap.put("8_9", new Glyph() {
                 @Override
+                public String getCanonicalStartGlyph() {
+                    return "8";
+                }
+
+                @Override
+                public String getCanonicalEndGlyph() {
+                    return "9";
+                }
+
+                @Override
                 public void draw(float t) {
                     float d = decelerate5(progress(t, 0, 0.5f));
                     float d1 = decelerate5(progress(t, 0.5f, 1));
@@ -954,24 +1119,40 @@ public class FormClockRenderer {
                         // top
                         canvas.save();
                         canvas.translate(0, interpolate(d, 0, 48));
-                        drawRoundRect(24, 0, 120, 48, 24, 24, mPaints.paint3);
+                        drawRoundRect(24, 0, 120, 48, 24, 24, COLOR_3);
                         canvas.restore();
 
-                        // bottom middle
-                        canvas.drawRect(interpolate(d, 48, 72) - 2, interpolate(d, 48, 0),
-                                interpolate(d, 96, 72) + 2, 144, mPaints.paint1);
+                        if (d == 0) {
+                            // left + middle bottom
+                            canvas.save();
+                            path.reset();
+                            path.moveTo(48, 48);
+                            path.lineTo(96, 48);
+                            path.lineTo(96, 144);
+                            path.lineTo(48, 144);
+                            arcTo(0, 48, 96, 144, 90, 180, true);
+                            drawPath(path, COLOR_1);
+                            canvas.restore();
 
-                        // left bottom
-                        canvas.save();
-                        scaleUniform(interpolate(d, 2f/3, 1), 0, 144);
-                        drawArc(0, 0, 144, 144, 90, 180, true, mPaints.paint1);
-                        canvas.restore();
+                            // right bottom
+                            drawArc(48, 48, 144, 144, -90, 180, true, COLOR_2);
+                        } else {
+                            // bottom middle
+                            drawRect(interpolate(d, 48, 72) - 2, interpolate(d, 48, 0),
+                                    interpolate(d, 96, 72) + 2, 144, COLOR_1);
 
-                        // right bottom
-                        canvas.save();
-                        scaleUniform(interpolate(d, 2f/3, 1), 144, 144);
-                        drawArc(0, 0, 144, 144, -90, 180, true, mPaints.paint2);
-                        canvas.restore();
+                            // left bottom
+                            canvas.save();
+                            scaleUniform(interpolate(d, 2f/3, 1), 0, 144);
+                            drawArc(0, 0, 144, 144, 90, 180, true, COLOR_1);
+                            canvas.restore();
+
+                            // right bottom
+                            canvas.save();
+                            scaleUniform(interpolate(d, 2f/3, 1), 144, 144);
+                            drawArc(0, 0, 144, 144, -90, 180, true, COLOR_2);
+                            canvas.restore();
+                        }
                     } else {
                         // 9
                         canvas.save();
@@ -985,15 +1166,15 @@ public class FormClockRenderer {
                         path.lineTo(interpolate(d1, 72, 108), interpolate(d1, 72, 0));
                         path.lineTo(72, 72);
                         path.lineTo(0, 72);
-                        canvas.drawPath(path, mPaints.paint3);
+                        drawPath(path, COLOR_3);
 
                         // vanishing arc
                         drawArc(0, 0, 144, 144,
                                 -180,
-                                interpolate(d1, 180, 0), true, mPaints.paint1);
+                                interpolate(d1, 180, 0), true, COLOR_1);
 
                         // primary arc
-                        drawArc(0, 0, 144, 144, 0, 180, true, mPaints.paint2);
+                        drawArc(0, 0, 144, 144, 0, 180, true, COLOR_2);
 
                         canvas.restore();
                     }
@@ -1006,6 +1187,16 @@ public class FormClockRenderer {
             });
 
             mGlyphMap.put("9_0", new Glyph() {
+                @Override
+                public String getCanonicalStartGlyph() {
+                    return "9";
+                }
+
+                @Override
+                public String getCanonicalEndGlyph() {
+                    return "0";
+                }
+
                 @Override
                 public void draw(float t) {
                     float d = decelerate5(t);
@@ -1023,16 +1214,16 @@ public class FormClockRenderer {
                     path.lineTo(interpolate(d, 108, 72), interpolate(d, 0, 72));
                     path.lineTo(72, 72);
                     path.lineTo(0, 72);
-                    canvas.drawPath(path, mPaints.paint3);
+                    drawPath(path, COLOR_3);
 
                     canvas.restore();
 
                     // TODO: interpolate colors
-                    //ctx.fillStyle = interpolateColors(d, mPaints.paint1, mPaints.paint3);
+                    //ctx.fillStyle = interpolateColors(d, COLOR_1, COLOR_3);
                     drawArc(0, 0, 144, 144,
-                            0, interpolate(d, 0, -180), true, mPaints.paint3);
+                            0, interpolate(d, 0, -180), true, COLOR_3);
 
-                    drawArc(0, 0, 144, 144, 0, 180, true, mPaints.paint2);
+                    drawArc(0, 0, 144, 144, 0, 180, true, COLOR_2);
 
                     canvas.restore();
                 }
@@ -1045,18 +1236,28 @@ public class FormClockRenderer {
 
             mGlyphMap.put(" _1", new Glyph() {
                 @Override
+                public String getCanonicalStartGlyph() {
+                    return " ";
+                }
+
+                @Override
+                public String getCanonicalEndGlyph() {
+                    return "1";
+                }
+
+                @Override
                 public void draw(float t) {
                     float d1 = decelerate5(progress(t, 0, 0.5f));
                     float d2 = decelerate5(progress(t, 0.5f, 1));
 
                     // 1
                     scaleUniform(interpolate(d1, 0, 1), 0, 144);
-                    canvas.drawRect(
+                    drawRect(
                             interpolate(d2, 28, 0), interpolate(d2, 72, 0),
-                            100, interpolate(d2, 144, 48), mPaints.paint2);
+                            100, interpolate(d2, 144, 48), COLOR_2);
 
                     if (d2 > 0) {
-                        canvas.drawRect(28, interpolate(d2, 144, 48), 100, 144, mPaints.paint3);
+                        drawRect(28, interpolate(d2, 144, 48), 100, 144, COLOR_3);
                     }
                 }
 
@@ -1068,17 +1269,27 @@ public class FormClockRenderer {
 
             mGlyphMap.put("1_ ", new Glyph() {
                 @Override
+                public String getCanonicalStartGlyph() {
+                    return "1";
+                }
+
+                @Override
+                public String getCanonicalEndGlyph() {
+                    return " ";
+                }
+
+                @Override
                 public void draw(float t) {
                     float d1 = decelerate5(progress(t, 0, 0.5f));
                     float d2 = decelerate5(progress(t, 0.5f, 1));
 
                     scaleUniform(interpolate(d2, 1, 0), 0, 144);
-                    canvas.drawRect(
+                    drawRect(
                             interpolate(d1, 0, 28), interpolate(d1, 0, 72),
-                            100, interpolate(d1, 48, 144), mPaints.paint2);
+                            100, interpolate(d1, 48, 144), COLOR_2);
 
                     if (d1 < 1) {
-                        canvas.drawRect(28, interpolate(d1, 48, 144), 100, 144, mPaints.paint3);
+                        drawRect(28, interpolate(d1, 48, 144), 100, 144, COLOR_3);
                     }
                 }
 
@@ -1089,6 +1300,16 @@ public class FormClockRenderer {
             });
 
             mGlyphMap.put("5_0", new Glyph() {
+                @Override
+                public String getCanonicalStartGlyph() {
+                    return "5";
+                }
+
+                @Override
+                public String getCanonicalEndGlyph() {
+                    return "0";
+                }
+
                 @Override
                 public void draw(float t) {
                     float d = decelerate5(progress(t, 0, 0.5f));
@@ -1101,19 +1322,19 @@ public class FormClockRenderer {
                     if (d < 1) {
                         // wing rectangle
                         canvas.save();
-                        canvas.drawRect(
+                        drawRect(
                                 80, interpolate(d, 0, 48),
-                                interpolate(d, 128, 80), interpolate(d, 48, 144), mPaints.paint2);
+                                interpolate(d, 128, 80), interpolate(d, 48, 144), COLOR_2);
                         canvas.restore();
 
                         // bottom rectangle
-                        canvas.drawRect(0, 96, 80, 144, mPaints.paint2);
+                        drawRect(0, 96, 80, 144, COLOR_2);
                     }
 
                     // middle rectangle
-                    canvas.drawRect(
+                    drawRect(
                             interpolate(d1, 0, 80), interpolate(d, 0, interpolate(d1, 48, 0)),
-                            80, interpolate(d, 96, 144), mPaints.paint1);
+                            80, interpolate(d, 96, 144), COLOR_1);
 
                     scaleUniform(interpolate(d1, 2f/3, 1), 80, 144);
 
@@ -1123,14 +1344,14 @@ public class FormClockRenderer {
                         canvas.rotate(interpolate(d1, -180, 0), 72, 72);
                         drawArc(
                                 0, 0,
-                                144, 144, 90, 180, true, mPaints.paint2);
+                                144, 144, 90, 180, true, COLOR_2);
                         canvas.restore();
                     }
 
                     canvas.translate(interpolate(d1, 8, 0), 0);
                     drawArc(
                             0, 0,
-                            144, 144, -90, 180, true, mPaints.paint3);
+                            144, 144, -90, 180, true, COLOR_3);
 
                     canvas.restore();
                 }
@@ -1142,6 +1363,16 @@ public class FormClockRenderer {
             });
 
             mGlyphMap.put("2_1", new Glyph() {
+                @Override
+                public String getCanonicalStartGlyph() {
+                    return "2";
+                }
+
+                @Override
+                public String getCanonicalEndGlyph() {
+                    return "1";
+                }
+
                 @Override
                 public void draw(float t) {
                     float d = decelerate5(progress(t, 0, 0.5f));
@@ -1157,31 +1388,31 @@ public class FormClockRenderer {
                         path.lineTo(72, 72);
                         path.lineTo(72, 144);
                         path.lineTo(0, 144);
-                        canvas.drawPath(path, mPaints.paint3);
+                        drawPath(path, COLOR_3);
                         canvas.restore();
 
                         canvas.save();
                         // TODO: interpolate colors
-                        //ctx.fillStyle = interpolateColors(d1, mPaints.paint1, mPaints.paint2);
+                        //ctx.fillStyle = interpolateColors(d1, COLOR_1, COLOR_2);
                         canvas.translate(interpolate(d, 108, 64), interpolate(d1, 0, 72));
-                        drawArc(-36, 0, 36, 72, -90, 180, true, mPaints.paint2);
+                        drawArc(-36, 0, 36, 72, -90, 180, true, COLOR_1);
                         canvas.restore();
 
                         canvas.save();
                         canvas.translate(0, interpolate(d1, 0, 72));
-                        canvas.drawRect(interpolate(d, 8, 28), 0, interpolate(d, 108, 100), 72, mPaints.paint1);
+                        drawRect(interpolate(d, 8, 28), 0, interpolate(d, 108, 100), 72, COLOR_1);
                         canvas.restore();
 
                         canvas.save();
                         canvas.translate(interpolate(d, 0, -44), 0);
-                        canvas.drawRect(72, 72, 144, 144, mPaints.paint2);
+                        drawRect(72, 72, 144, 144, COLOR_2);
                         canvas.restore();
                     } else {
                         // 1
                         canvas.save();
-                        canvas.drawRect(interpolate(d2, 28, 0), interpolate(d2, 72, 0), 100, interpolate(d2, 144, 48), mPaints.paint2);
+                        drawRect(interpolate(d2, 28, 0), interpolate(d2, 72, 0), 100, interpolate(d2, 144, 48), COLOR_2);
 
-                        canvas.drawRect(28, interpolate(d2, 144, 48), 100, 144, mPaints.paint3);
+                        drawRect(28, interpolate(d2, 144, 48), 100, 144, COLOR_3);
                         canvas.restore();
                     }
                 }
@@ -1194,9 +1425,19 @@ public class FormClockRenderer {
 
             mGlyphMap.put(":", new Glyph() {
                 @Override
+                public String getCanonicalStartGlyph() {
+                    return ":";
+                }
+
+                @Override
+                public String getCanonicalEndGlyph() {
+                    return ":";
+                }
+
+                @Override
                 public void draw(float t) {
-                    drawOval(0, 0, 48, 48, mPaints.paint2);
-                    drawOval(0, 96, 48, 144, mPaints.paint3);
+                    drawOval(0, 0, 48, 48, COLOR_2);
+                    drawOval(0, 96, 48, 144, COLOR_3);
                 }
 
                 @Override
@@ -1206,6 +1447,16 @@ public class FormClockRenderer {
             });
 
             mGlyphMap.put(" ", new Glyph() {
+                @Override
+                public String getCanonicalStartGlyph() {
+                    return " ";
+                }
+
+                @Override
+                public String getCanonicalEndGlyph() {
+                    return " ";
+                }
+
                 @Override
                 public void draw(float t) {
                 }

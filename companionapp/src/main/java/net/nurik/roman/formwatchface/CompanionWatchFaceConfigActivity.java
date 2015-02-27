@@ -20,7 +20,9 @@ import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.annotation.TargetApi;
 import android.app.Activity;
+import android.app.LoaderManager;
 import android.content.Intent;
+import android.content.Loader;
 import android.content.SharedPreferences;
 import android.content.res.Resources;
 import android.graphics.Color;
@@ -35,27 +37,37 @@ import android.view.View;
 import android.view.ViewAnimationUtils;
 import android.view.ViewGroup;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 
 import net.nurik.roman.formwatchface.common.ChangeConfigIntentService;
 import net.nurik.roman.formwatchface.common.FormClockView;
 import net.nurik.roman.formwatchface.common.MathUtil;
+import net.nurik.roman.formwatchface.common.MuzeiArtworkImageLoader;
 import net.nurik.roman.formwatchface.common.Themes;
 
 import java.util.ArrayList;
 
+import static net.nurik.roman.formwatchface.common.MuzeiArtworkImageLoader.LoadedArtwork;
+import static net.nurik.roman.formwatchface.common.Themes.MUZEI_THEME;
 import static net.nurik.roman.formwatchface.common.Themes.Theme;
 
-public class CompanionWatchFaceConfigActivity extends Activity {
+public class CompanionWatchFaceConfigActivity extends Activity implements
+        LoaderManager.LoaderCallbacks<LoadedArtwork> {
     private static final String TAG = "CompanionWatchFaceConfigActivity";
+
+    private static final int LOADER_MUZEI_ARTWORK = 1;
 
     private ViewGroup mThemeItemContainer;
     private ArrayList<ThemeUiHolder> mThemeUiHolders = new ArrayList<>();
+    private ThemeUiHolder mMuzeiThemeUiHolder;
 
-    private View mMainClockContainerView;
+    private ViewGroup mMainClockContainerView;
     private FormClockView mMainClockView;
-    private View mAnimateClockContainerView;
+    private ViewGroup mAnimateClockContainerView;
     private FormClockView mAnimateClockView;
     private Animator mCurrentRevealAnimator;
+
+    private LoadedArtwork mMuzeiLoadedArtwork;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -65,10 +77,10 @@ public class CompanionWatchFaceConfigActivity extends Activity {
                         | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
         setContentView(R.layout.activity_config);
 
-        mMainClockContainerView = ((ViewGroup) findViewById(R.id.clock_container)).getChildAt(0);
+        mMainClockContainerView = (ViewGroup) ((ViewGroup) findViewById(R.id.clock_container)).getChildAt(0);
         mMainClockView = (FormClockView) mMainClockContainerView.findViewById(R.id.clock);
 
-        mAnimateClockContainerView = ((ViewGroup) findViewById(R.id.clock_container)).getChildAt(1);
+        mAnimateClockContainerView = (ViewGroup) ((ViewGroup) findViewById(R.id.clock_container)).getChildAt(1);
         mAnimateClockView = (FormClockView) mAnimateClockContainerView.findViewById(R.id.clock);
 
         mAnimateClockContainerView.setVisibility(View.INVISIBLE);
@@ -142,6 +154,61 @@ public class CompanionWatchFaceConfigActivity extends Activity {
             mThemeUiHolders.add(holder);
             mThemeItemContainer.addView(holder.container);
         }
+
+        loadMuzei();
+    }
+
+    private void loadMuzei() {
+        if (!MuzeiArtworkImageLoader.hasMuzeiArtwork(this)) {
+            return;
+        }
+
+        LayoutInflater inflater = LayoutInflater.from(this);
+        ThemeUiHolder holder = new ThemeUiHolder();
+
+        final Theme theme = Themes.MUZEI_THEME;
+        holder.theme = theme;
+        holder.container = inflater.inflate(R.layout.theme_item, mThemeItemContainer, false);
+        holder.button = (ImageButton) holder.container.findViewById(R.id.button);
+
+        LayerDrawable bgDrawable = (LayerDrawable)
+                getResources().getDrawable(R.drawable.theme_muzei_item_bg).mutate();
+        holder.button.setBackground(bgDrawable);
+
+        holder.button.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                updateSelectedTheme(theme.id, true);
+                startService(new Intent(CompanionWatchFaceConfigActivity.this,
+                        ChangeConfigIntentService.class)
+                        .putExtra(ChangeConfigIntentService.EXTRA_THEME, theme.id));
+            }
+        });
+
+        mThemeUiHolders.add(holder);
+        mThemeItemContainer.addView(holder.container);
+        mMuzeiThemeUiHolder = holder;
+
+        // begin load using fragments
+        getLoaderManager().initLoader(LOADER_MUZEI_ARTWORK, null, this);
+    }
+
+    @Override
+    public Loader<LoadedArtwork> onCreateLoader(int id, Bundle args) {
+        return new MuzeiArtworkImageLoader(this);
+    }
+
+    @Override
+    public void onLoadFinished(Loader<LoadedArtwork> loader, LoadedArtwork data) {
+        mMuzeiLoadedArtwork = data;
+        if (mMuzeiThemeUiHolder.selected) {
+            updatePreviewView(MUZEI_THEME, mMainClockContainerView, mMainClockView);
+        }
+    }
+
+    @Override
+    public void onLoaderReset(Loader<LoadedArtwork> loader) {
+        mMuzeiLoadedArtwork = null;
     }
 
     @TargetApi(Build.VERSION_CODES.LOLLIPOP)
@@ -157,7 +224,7 @@ public class CompanionWatchFaceConfigActivity extends Activity {
                 }
 
                 if (animate && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    setClockViewColors(holder.theme, mAnimateClockContainerView, mAnimateClockView);
+                    updatePreviewView(holder.theme, mAnimateClockContainerView, mAnimateClockView);
 
                     Rect buttonRect = new Rect();
                     Rect clockContainerRect = new Rect();
@@ -175,14 +242,21 @@ public class CompanionWatchFaceConfigActivity extends Activity {
                     mCurrentRevealAnimator.setDuration(300);
                     mCurrentRevealAnimator.addListener(new AnimatorListenerAdapter() {
                         @Override
+                        public void onAnimationCancel(Animator animation) {
+                            onAnimationEnd(animation);
+                        }
+
+                        @Override
                         public void onAnimationEnd(Animator animation) {
                             mAnimateClockContainerView.setVisibility(View.INVISIBLE);
-                            setClockViewColors(holder.theme, mMainClockContainerView, mMainClockView);
+                            updatePreviewView(holder.theme, mMainClockContainerView, mMainClockView);
                         }
                     });
+                    mAnimateClockView.syncWith(mMainClockView);
+                    mAnimateClockView.postInvalidateOnAnimation();
                     mCurrentRevealAnimator.start();
                 } else {
-                    setClockViewColors(holder.theme, mMainClockContainerView, mMainClockView);
+                    updatePreviewView(holder.theme, mMainClockContainerView, mMainClockView);
                 }
             }
 
@@ -190,14 +264,28 @@ public class CompanionWatchFaceConfigActivity extends Activity {
         }
     }
 
-    private void setClockViewColors(Theme theme, View clockContainerView, FormClockView clockView) {
-        final Resources res = getResources();
-        clockView.setColors(
-                res.getColor(theme.lightRes),
-                res.getColor(theme.midRes),
-                Color.WHITE);
-        clockContainerView.setBackgroundColor(
-                res.getColor(theme.darkRes));
+    private void updatePreviewView(Theme theme, ViewGroup clockContainerView, FormClockView clockView) {
+        if (theme == Themes.MUZEI_THEME) {
+            if (mMuzeiLoadedArtwork != null) {
+                ((ImageView) clockContainerView.findViewById(R.id.background_image))
+                        .setImageBitmap(mMuzeiLoadedArtwork.bitmap);
+                clockView.setColors(
+                        mMuzeiLoadedArtwork.color1,
+                        mMuzeiLoadedArtwork.color2,
+                        Color.WHITE);
+            }
+            clockContainerView.setBackgroundColor(Color.BLACK);
+        } else {
+            ((ImageView) clockContainerView.findViewById(R.id.background_image))
+                    .setImageDrawable(null);
+            final Resources res = getResources();
+            clockView.setColors(
+                    res.getColor(theme.lightRes),
+                    res.getColor(theme.midRes),
+                    Color.WHITE);
+            clockContainerView.setBackgroundColor(
+                    res.getColor(theme.darkRes));
+        }
     }
 
     private static class ThemeUiHolder {

@@ -18,6 +18,11 @@ package net.nurik.roman.formwatchface;
 
 import android.animation.ValueAnimator;
 import android.annotation.TargetApi;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.Loader;
 import android.content.SharedPreferences;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -38,6 +43,8 @@ import android.view.SurfaceHolder;
 import android.view.WindowInsets;
 import android.view.animation.DecelerateInterpolator;
 
+import com.google.android.apps.muzei.api.MuzeiContract;
+
 import net.nurik.roman.formwatchface.common.FormClockRenderer;
 import net.nurik.roman.formwatchface.common.MathUtil;
 import net.nurik.roman.formwatchface.common.Themes;
@@ -49,13 +56,15 @@ import static net.nurik.roman.formwatchface.common.FormClockRenderer.ClockPaints
 import static net.nurik.roman.formwatchface.common.FormClockRenderer.TimeInfo;
 import static net.nurik.roman.formwatchface.common.MathUtil.decelerate2;
 import static net.nurik.roman.formwatchface.common.MathUtil.interpolate;
+import static net.nurik.roman.formwatchface.common.MuzeiArtworkImageLoader.LoadedArtwork;
+import static net.nurik.roman.formwatchface.common.Themes.MUZEI_THEME;
 import static net.nurik.roman.formwatchface.common.Themes.Theme;
 
 @TargetApi(Build.VERSION_CODES.LOLLIPOP)
 public class FormWatchFace extends CanvasWatchFaceService {
     private static final String TAG = "FormClockWatchFace";
 
-    private static final long DEBUG_BASE_TIME_MILLIS = 0;//new Date(2014, 1, 1, 11, 59, 53).getTime();
+    private static final long DEBUG_BASE_TIME_MILLIS = 0;//new Date(2015, 1, 1, 11, 59, 53).getTime();
     private static final long BOOT_TIME_MILLIS = System.currentTimeMillis();
 
     private static final int UPDATE_THEME_ANIM_DURATION = 2000;
@@ -75,6 +84,11 @@ public class FormWatchFace extends CanvasWatchFaceService {
         private ValueAnimator mSecondsAlphaAnimator = new ValueAnimator();
         private int mWidth = 0;
         private int mHeight = 0;
+
+        // For Muzei
+        private WatchfaceArtworkImageLoader mMuzeiLoader;
+        private Paint mMuzeiArtworkPaint;
+        private LoadedArtwork mMuzeiLoadedArtwork;
 
         // FORM clock renderer specific stuff
         private FormClockRenderer mHourMinRenderer;
@@ -97,6 +111,7 @@ public class FormWatchFace extends CanvasWatchFaceService {
 
         private ClockPaints mNormalPaints;
         private ClockPaints mAmbientPaints;
+        private boolean mDrawMuzeiBitmap;
         private Theme mCurrentTheme;
         private Theme mAnimateFromTheme;
         private Path mUpdateThemeClipPath = new Path();
@@ -113,6 +128,8 @@ public class FormWatchFace extends CanvasWatchFaceService {
             initClockRenderers();
 
             registerSharedPrefsListener();
+
+            initMuzei();
         }
 
         private void initClockRenderers() {
@@ -121,22 +138,16 @@ public class FormWatchFace extends CanvasWatchFaceService {
             mAmbientBackgroundPaint.setColor(Color.BLACK);
             mBackgroundPaint = new Paint();
 
+            Paint paint = new Paint();
+            paint.setAntiAlias(true);
             mNormalPaints = new ClockPaints();
-            mNormalPaints.paint1 = new Paint();
-            mNormalPaints.paint1.setAntiAlias(true);
-            mNormalPaints.paint2 = new Paint(mNormalPaints.paint1);
-            mNormalPaints.paint3 = new Paint(mNormalPaints.paint1);
-
-            mAmbientPaints = new ClockPaints();
-            mAmbientPaints.paint1 = new Paint();
-            mAmbientPaints.paint1.setAntiAlias(true);
-            mAmbientPaints.paint2 = new Paint(mAmbientPaints.paint1);
-            mAmbientPaints.paint3 = new Paint(mAmbientPaints.paint1);
-            mAmbientPaints.paint1.setColor(0xFFCCCCCC);
-            mAmbientPaints.paint2.setColor(0xFFAAAAAA);
-            mAmbientPaints.paint3.setColor(Color.WHITE);
+            mNormalPaints.fills[0] = paint;
+            mNormalPaints.fills[1] = new Paint(paint);
+            mNormalPaints.fills[2] = new Paint(paint);
 
             updateThemeColors();
+
+            rebuildAmbientPaints();
 
             // General config
             FormClockRenderer.Options options = new FormClockRenderer.Options();
@@ -215,7 +226,49 @@ public class FormWatchFace extends CanvasWatchFaceService {
         public void onDestroy() {
             super.onDestroy();
             unregisterSharedPrefsListener();
+            destroyMuzei();
         }
+
+        private void initMuzei() {
+            mMuzeiArtworkPaint = new Paint();
+            mMuzeiArtworkPaint.setAlpha(102);
+            mMuzeiLoader = new WatchfaceArtworkImageLoader(FormWatchFace.this);
+            mMuzeiLoader.registerListener(0, mMuzeiLoadCompleteListener);
+            mMuzeiLoader.startLoading();
+
+            // Watch for artwork changes
+            IntentFilter artworkChangedIntent = new IntentFilter();
+            artworkChangedIntent.addAction(MuzeiContract.Artwork.ACTION_ARTWORK_CHANGED);
+            registerReceiver(mMuzeiArtworkChangedReceiver, artworkChangedIntent);
+        }
+
+        private BroadcastReceiver mMuzeiArtworkChangedReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                mMuzeiLoader.startLoading();
+            }
+        };
+
+        private void destroyMuzei() {
+            unregisterReceiver(mMuzeiArtworkChangedReceiver);
+            if (mMuzeiLoader != null) {
+                mMuzeiLoader.unregisterListener(mMuzeiLoadCompleteListener);
+                mMuzeiLoader.reset();
+                mMuzeiLoader = null;
+            }
+        }
+
+        private Loader.OnLoadCompleteListener<LoadedArtwork> mMuzeiLoadCompleteListener
+                = new Loader.OnLoadCompleteListener<LoadedArtwork>() {
+            public void onLoadComplete(Loader<LoadedArtwork> loader, LoadedArtwork data) {
+                if (data != null) {
+                    mMuzeiLoadedArtwork = data;
+                } else {
+                    mMuzeiLoadedArtwork = null;
+                }
+                postInvalidate();
+            }
+        };
 
         private void registerSharedPrefsListener() {
             PreferenceManager.getDefaultSharedPreferences(FormWatchFace.this)
@@ -245,12 +298,41 @@ public class FormWatchFace extends CanvasWatchFaceService {
             mBurnInProtection = properties.getBoolean(PROPERTY_BURN_IN_PROTECTION, false);
             mLowBitAmbient = properties.getBoolean(PROPERTY_LOW_BIT_AMBIENT, false);
 
-            mAmbientPaints.paint1.setAntiAlias(!mLowBitAmbient);
-            mAmbientPaints.paint2.setAntiAlias(!mLowBitAmbient);
-            mAmbientPaints.paint3.setAntiAlias(!mLowBitAmbient);
+            rebuildAmbientPaints();
 
             LOGD(TAG, "onPropertiesChanged: burn-in protection = " + mBurnInProtection
                     + ", low-bit ambient = " + mLowBitAmbient);
+        }
+
+        private void rebuildAmbientPaints() {
+            Paint paint = new Paint();
+            mAmbientPaints = new ClockPaints();
+            if (mBurnInProtection || mLowBitAmbient) {
+                paint.setAntiAlias(false);
+                paint.setColor(Color.BLACK);
+                mAmbientPaints.fills[0] = mAmbientPaints.fills[1] = mAmbientPaints.fills[2] = paint;
+
+                paint = new Paint();
+                paint.setAntiAlias(!mLowBitAmbient);
+                paint.setStyle(Paint.Style.STROKE);
+                paint.setStrokeWidth(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 5,
+                        getResources().getDisplayMetrics()));
+                paint.setColor(Color.WHITE);
+                mAmbientPaints.strokes[0] = mAmbientPaints.strokes[1] = mAmbientPaints.strokes[2]
+                        = paint;
+                mAmbientPaints.hasStroke = true;
+
+            } else {
+                paint.setAntiAlias(true);
+                mAmbientPaints.fills[0] = paint;
+                mAmbientPaints.fills[0].setColor(0xFFCCCCCC);
+
+                mAmbientPaints.fills[1] = new Paint(paint);
+                mAmbientPaints.fills[1].setColor(0xFFAAAAAA);
+
+                mAmbientPaints.fills[2] = new Paint(paint);
+                mAmbientPaints.fills[2].setColor(Color.WHITE);
+            }
         }
 
         @Override
@@ -315,10 +397,7 @@ public class FormWatchFace extends CanvasWatchFaceService {
 
             boolean ambientMode = isInAmbientMode();
 
-            mBackgroundPaint.setColor(getResources().getColor(mCurrentTheme.darkRes));
-            mNormalPaints.paint1.setColor(getResources().getColor(mCurrentTheme.lightRes));
-            mNormalPaints.paint2.setColor(getResources().getColor(mCurrentTheme.midRes));
-            mNormalPaints.paint3.setColor(Color.WHITE);
+            updatePaintsForTheme(mCurrentTheme);
 
             // Figure out what to animate
             long currentTimeMillis = System.currentTimeMillis();
@@ -363,10 +442,7 @@ public class FormWatchFace extends CanvasWatchFaceService {
                 int sc = -1;
                 if (currentTimeMillis - mUpdateThemeStartAnimTimeMillis < UPDATE_THEME_ANIM_DURATION && mAnimateFromTheme != null) {
                     // show a reveal animation
-                    mBackgroundPaint.setColor(getResources().getColor(mAnimateFromTheme.darkRes));
-                    mNormalPaints.paint1.setColor(getResources().getColor(mAnimateFromTheme.lightRes));
-                    mNormalPaints.paint2.setColor(getResources().getColor(mAnimateFromTheme.midRes));
-                    mNormalPaints.paint3.setColor(Color.WHITE);
+                    updatePaintsForTheme(mAnimateFromTheme);
                     drawClock(canvas);
 
                     sc = canvas.save(Canvas.CLIP_SAVE_FLAG);
@@ -386,10 +462,7 @@ public class FormWatchFace extends CanvasWatchFaceService {
                     canvas.clipPath(mUpdateThemeClipPath);
                 }
 
-                mBackgroundPaint.setColor(getResources().getColor(mCurrentTheme.darkRes));
-                mNormalPaints.paint1.setColor(getResources().getColor(mCurrentTheme.lightRes));
-                mNormalPaints.paint2.setColor(getResources().getColor(mCurrentTheme.midRes));
-                mNormalPaints.paint3.setColor(Color.WHITE);
+                updatePaintsForTheme(mCurrentTheme);
                 drawClock(canvas);
 
                 if (sc >= 0) {
@@ -402,15 +475,44 @@ public class FormWatchFace extends CanvasWatchFaceService {
             }
         }
 
+        private void updatePaintsForTheme(Theme theme) {
+            if (theme == MUZEI_THEME) {
+                mBackgroundPaint.setColor(Color.BLACK);
+                if (mMuzeiLoadedArtwork != null) {
+                    mNormalPaints.fills[0].setColor(mMuzeiLoadedArtwork.color1);
+                    mNormalPaints.fills[1].setColor(mMuzeiLoadedArtwork.color2);
+                    mNormalPaints.fills[2].setColor(Color.WHITE);
+                }
+                mDrawMuzeiBitmap = true;
+            } else {
+                mBackgroundPaint.setColor(getResources().getColor(theme.darkRes));
+                mNormalPaints.fills[0].setColor(getResources().getColor(theme.lightRes));
+                mNormalPaints.fills[1].setColor(getResources().getColor(theme.midRes));
+                mNormalPaints.fills[2].setColor(Color.WHITE);
+                mDrawMuzeiBitmap = false;
+            }
+        }
+
         private void drawClock(Canvas canvas) {
             boolean ambientMode = isInAmbientMode();
-            canvas.drawRect(0, 0, mWidth, mHeight,
-                    ambientMode ? mAmbientBackgroundPaint : mBackgroundPaint);
+
+            if (ambientMode) {
+                canvas.drawRect(0, 0, mWidth, mHeight, mAmbientBackgroundPaint);
+            } else if (mDrawMuzeiBitmap && mMuzeiLoadedArtwork != null) {
+                canvas.drawRect(0, 0, mWidth, mHeight, mAmbientBackgroundPaint);
+                canvas.drawBitmap(mMuzeiLoadedArtwork.bitmap,
+                        (mWidth - mMuzeiLoadedArtwork.bitmap.getWidth()) / 2,
+                        (mHeight - mMuzeiLoadedArtwork.bitmap.getHeight()) / 2,
+                        mMuzeiArtworkPaint);
+            } else {
+                canvas.drawRect(0, 0, mWidth, mHeight, mBackgroundPaint);
+            }
 
             float bottom = (Float) mBottomBoundAnimator.getAnimatedValue();
 
             PointF hourMinSize = mHourMinRenderer.measure();
-            mHourMinRenderer.draw(canvas, (mWidth - hourMinSize.x) / 2, (bottom - hourMinSize.y) / 2);
+            mHourMinRenderer.draw(canvas, (mWidth - hourMinSize.x) / 2, (bottom - hourMinSize.y) / 2,
+                    !ambientMode);
 
             float secondsOpacity = (Float) mSecondsAlphaAnimator.getAnimatedValue();
             if (!ambientMode && secondsOpacity > 0) {
@@ -426,7 +528,8 @@ public class FormWatchFace extends CanvasWatchFaceService {
                         (mWidth + hourMinSize.x) / 2 - secondsSize.x,
                         (bottom + hourMinSize.y) / 2
                                 + TypedValue.applyDimension(5, TypedValue.COMPLEX_UNIT_DIP,
-                                getResources().getDisplayMetrics()));
+                                getResources().getDisplayMetrics()),
+                        !ambientMode);
                 if (sc >= 0) {
                     canvas.restoreToCount(sc);
                 }
