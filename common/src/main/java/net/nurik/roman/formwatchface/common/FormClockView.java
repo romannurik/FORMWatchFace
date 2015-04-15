@@ -170,7 +170,7 @@ public class FormClockView extends View {
 
         mHourMinRenderer.setAnimTime(currentTimeMillis - mHourMinStartAnimTimeMillis);
         mHourMinRenderer.draw(canvas, (mWidth - hourMinSize.x) / 2, (mHeight - hourMinSize.y) / 2,
-                true);
+                false);
 
         mSecondsRenderer.setAnimTime(currentTimeMillis - mSecondsStartAnimTimeMillis);
 
@@ -181,7 +181,7 @@ public class FormClockView extends View {
                 (mHeight + hourMinSize.y) / 2
                         + TypedValue.applyDimension(5, TypedValue.COMPLEX_UNIT_DIP,
                         getResources().getDisplayMetrics()),
-                true);
+                false);
 
         postInvalidateOnAnimation();
     }

@@ -14,7 +14,9 @@
  * limitations under the License.
  */
 
-package net.nurik.roman.formwatchface.common;
+package net.nurik.roman.formwatchface.common.config;
+
+import net.nurik.roman.formwatchface.common.R;
 
 import java.util.HashMap;
 import java.util.Map;

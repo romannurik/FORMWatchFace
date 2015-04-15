@@ -14,18 +14,13 @@
  * limitations under the License.
  */
 
-package net.nurik.roman.formwatchface.common;
-
-import android.content.SharedPreferences;
-import android.preference.PreferenceManager;
+package net.nurik.roman.formwatchface.common.config;
 
 import com.google.android.gms.wearable.DataEvent;
 import com.google.android.gms.wearable.DataEventBuffer;
-import com.google.android.gms.wearable.MessageEvent;
+import com.google.android.gms.wearable.WearableListenerService;
 
-public class WearableListenerService extends com.google.android.gms.wearable.WearableListenerService {
-    private static final String TAG = "WearableListenerService";
-
+public class ConfigChangeListenerService extends WearableListenerService {
     @Override
     public void onDataChanged(final DataEventBuffer dataEvents) {
         for (DataEvent dataEvent : dataEvents) {
@@ -33,11 +28,9 @@ public class WearableListenerService extends com.google.android.gms.wearable.Wea
                 continue;
             }
 
-            if (dataEvent.getDataItem().getUri().getPath().equals("/theme")) {
+            if (dataEvent.getDataItem().getUri().getPath().equals("/config")) {
                 ConfigHelper helper = new ConfigHelper(this);
-                String theme = helper.blockingGetTheme();
-                SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(this);
-                sp.edit().putString("theme", theme).apply();
+                helper.blockingReadConfig();
             }
         }
     }

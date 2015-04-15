@@ -31,12 +31,14 @@ import android.graphics.Path;
 import android.graphics.PointF;
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.graphics.Typeface;
 import android.os.Build;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
 import android.support.wearable.watchface.CanvasWatchFaceService;
 import android.support.wearable.watchface.WatchFaceService;
 import android.support.wearable.watchface.WatchFaceStyle;
+import android.text.format.DateFormat;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.SurfaceHolder;
@@ -47,8 +49,10 @@ import com.google.android.apps.muzei.api.MuzeiContract;
 
 import net.nurik.roman.formwatchface.common.FormClockRenderer;
 import net.nurik.roman.formwatchface.common.MathUtil;
-import net.nurik.roman.formwatchface.common.Themes;
+import net.nurik.roman.formwatchface.common.config.ConfigHelper;
+import net.nurik.roman.formwatchface.common.config.Themes;
 
+import java.lang.reflect.Type;
 import java.util.Calendar;
 
 import static net.nurik.roman.formwatchface.LogUtil.LOGD;
@@ -57,8 +61,8 @@ import static net.nurik.roman.formwatchface.common.FormClockRenderer.TimeInfo;
 import static net.nurik.roman.formwatchface.common.MathUtil.decelerate2;
 import static net.nurik.roman.formwatchface.common.MathUtil.interpolate;
 import static net.nurik.roman.formwatchface.common.MuzeiArtworkImageLoader.LoadedArtwork;
-import static net.nurik.roman.formwatchface.common.Themes.MUZEI_THEME;
-import static net.nurik.roman.formwatchface.common.Themes.Theme;
+import static net.nurik.roman.formwatchface.common.config.Themes.MUZEI_THEME;
+import static net.nurik.roman.formwatchface.common.config.Themes.Theme;
 
 @TargetApi(Build.VERSION_CODES.LOLLIPOP)
 public class FormWatchFace extends CanvasWatchFaceService {
@@ -94,6 +98,8 @@ public class FormWatchFace extends CanvasWatchFaceService {
         private FormClockRenderer mHourMinRenderer;
         private FormClockRenderer mSecondsRenderer;
 
+        private String mDateStr;
+
         private long mHourMinStartAnimTimeMillis;
         private long mSecondsStartAnimTimeMillis;
         private long mUpdateThemeStartAnimTimeMillis;
@@ -109,6 +115,11 @@ public class FormWatchFace extends CanvasWatchFaceService {
         private boolean mBurnInProtection;
         private boolean mIsRound;
 
+        private boolean mShowNotificationCount;
+        private boolean mShowSeconds;
+        private boolean mShowDate;
+
+        private Typeface mDateTypeface;
         private ClockPaints mNormalPaints;
         private ClockPaints mAmbientPaints;
         private boolean mDrawMuzeiBitmap;
@@ -123,7 +134,7 @@ public class FormWatchFace extends CanvasWatchFaceService {
             super.onCreate(holder);
 
             mMute = getInterruptionFilter() == WatchFaceService.INTERRUPTION_FILTER_NONE;
-            updateWatchFaceStyle();
+            handleConfigUpdated();
 
             initClockRenderers();
 
@@ -133,6 +144,8 @@ public class FormWatchFace extends CanvasWatchFaceService {
         }
 
         private void initClockRenderers() {
+            mDateTypeface = Typeface.createFromAsset(getAssets(), "VT323-Regular.ttf");
+
             // Init paints
             mAmbientBackgroundPaint = new Paint();
             mAmbientBackgroundPaint.setColor(Color.BLACK);
@@ -144,8 +157,10 @@ public class FormWatchFace extends CanvasWatchFaceService {
             mNormalPaints.fills[0] = paint;
             mNormalPaints.fills[1] = new Paint(paint);
             mNormalPaints.fills[2] = new Paint(paint);
-
-            updateThemeColors();
+            mNormalPaints.date = new Paint(paint);
+            mNormalPaints.date.setTypeface(mDateTypeface);
+            mNormalPaints.date.setTextSize(
+                    getResources().getDimensionPixelSize(R.dimen.seconds_clock_height));
 
             rebuildAmbientPaints();
 
@@ -169,11 +184,17 @@ public class FormWatchFace extends CanvasWatchFaceService {
             mSecondsRenderer = new FormClockRenderer(options, mNormalPaints);
         }
 
-        private void updateThemeColors() {
+        private void handleConfigUpdated() {
             SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(FormWatchFace.this);
-            String themeId = sp.getString("theme", Themes.DEFAULT_THEME.id);
+            String themeId = sp.getString(ConfigHelper.KEY_THEME, Themes.DEFAULT_THEME.id);
             mAnimateFromTheme = mCurrentTheme;
             mCurrentTheme = Themes.getThemeById(themeId);
+
+            mShowNotificationCount = sp.getBoolean(ConfigHelper.KEY_SHOW_NOTIFICATION_COUNT, false);
+            mShowSeconds = sp.getBoolean(ConfigHelper.KEY_SHOW_SECONDS, false);
+            mShowDate = sp.getBoolean(ConfigHelper.KEY_SHOW_DATE, false);
+
+            updateWatchFaceStyle();
         }
 
         private void updateWatchFaceStyle() {
@@ -184,7 +205,7 @@ public class FormWatchFace extends CanvasWatchFaceService {
                     .setStatusBarGravity(Gravity.TOP | Gravity.CENTER)
                     .setHotwordIndicatorGravity(Gravity.TOP | Gravity.CENTER)
                     .setViewProtection(0)
-                    .setShowUnreadCountIndicator(!mMute)
+                    .setShowUnreadCountIndicator(mShowNotificationCount && !mMute)
                     .build());
         }
 
@@ -284,9 +305,9 @@ public class FormWatchFace extends CanvasWatchFaceService {
                 = new SharedPreferences.OnSharedPreferenceChangeListener() {
             @Override
             public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
-                if ("theme".equals(key)) {
+                if (ConfigHelper.isConfigPrefKey(key)) {
                     mUpdateThemeStartAnimTimeMillis = System.currentTimeMillis();
-                    updateThemeColors();
+                    handleConfigUpdated();
                 }
             }
         };
@@ -322,6 +343,9 @@ public class FormWatchFace extends CanvasWatchFaceService {
                         = paint;
                 mAmbientPaints.hasStroke = true;
 
+                mAmbientPaints.date = new Paint(paint);
+                mAmbientPaints.date.setColor(Color.WHITE);
+
             } else {
                 paint.setAntiAlias(true);
                 mAmbientPaints.fills[0] = paint;
@@ -332,14 +356,20 @@ public class FormWatchFace extends CanvasWatchFaceService {
 
                 mAmbientPaints.fills[2] = new Paint(paint);
                 mAmbientPaints.fills[2].setColor(Color.WHITE);
+
+                mAmbientPaints.date = new Paint(paint);
+                mAmbientPaints.date.setColor(0xFFCCCCCC);
             }
+
+            mAmbientPaints.date.setTypeface(mDateTypeface);
+            mAmbientPaints.date.setTextSize(
+                    getResources().getDimensionPixelSize(R.dimen.seconds_clock_height));
         }
 
         @Override
         public void onPeekCardPositionUpdate(Rect bounds) {
             super.onPeekCardPositionUpdate(bounds);
             LOGD(TAG, "onPeekCardPositionUpdate: " + bounds);
-            super.onPeekCardPositionUpdate(bounds);
             if (!bounds.equals(mCardBounds)) {
                 mCardBounds.set(bounds);
 
@@ -392,9 +422,6 @@ public class FormWatchFace extends CanvasWatchFaceService {
 
         @Override
         public void onDraw(Canvas canvas, Rect bounds) {
-            int width = canvas.getWidth();
-            int height = canvas.getHeight();
-
             boolean ambientMode = isInAmbientMode();
 
             updatePaintsForTheme(mCurrentTheme);
@@ -412,6 +439,7 @@ public class FormWatchFace extends CanvasWatchFaceService {
                 mHourMinRenderer.setTime(ti.clone().removeSeconds().previous());
                 mSecondsRenderer.setTime(ti.removeHoursMinutes().previous());
                 mFirstFrame = false;
+                updateDateStr();
 
             } else if (mLastAnimatedCurrentTimeSec != currentTimeSec) {
                 // kick off seconds change animation
@@ -428,6 +456,7 @@ public class FormWatchFace extends CanvasWatchFaceService {
                     // kick off minute change animation
                     mHourMinStartAnimTimeMillis = currentTimeMillis;
                 }
+                updateDateStr();
             }
 
             mHourMinRenderer.setAnimTime(
@@ -471,8 +500,13 @@ public class FormWatchFace extends CanvasWatchFaceService {
             }
 
             if ((isVisible() && !ambientMode) || mBottomBoundAnimator.isRunning()) {
+                // TODO: avoid always drawing if seconds aren't shown
                 postInvalidate();
             }
+        }
+
+        private void updateDateStr() {
+            mDateStr = DateFormat.format("EEE d", Calendar.getInstance()).toString().toUpperCase();
         }
 
         private void updatePaintsForTheme(Theme theme) {
@@ -482,6 +516,7 @@ public class FormWatchFace extends CanvasWatchFaceService {
                     mNormalPaints.fills[0].setColor(mMuzeiLoadedArtwork.color1);
                     mNormalPaints.fills[1].setColor(mMuzeiLoadedArtwork.color2);
                     mNormalPaints.fills[2].setColor(Color.WHITE);
+                    mNormalPaints.date.setColor(mMuzeiLoadedArtwork.color1);
                 }
                 mDrawMuzeiBitmap = true;
             } else {
@@ -489,6 +524,7 @@ public class FormWatchFace extends CanvasWatchFaceService {
                 mNormalPaints.fills[0].setColor(getResources().getColor(theme.lightRes));
                 mNormalPaints.fills[1].setColor(getResources().getColor(theme.midRes));
                 mNormalPaints.fills[2].setColor(Color.WHITE);
+                mNormalPaints.date.setColor(getResources().getColor(theme.lightRes));
                 mDrawMuzeiBitmap = false;
             }
         }
@@ -514,8 +550,9 @@ public class FormWatchFace extends CanvasWatchFaceService {
             mHourMinRenderer.draw(canvas, (mWidth - hourMinSize.x) / 2, (bottom - hourMinSize.y) / 2,
                     !ambientMode);
 
+            float clockSecondsSpacing = getResources().getDimension(R.dimen.clock_seconds_spacing);
             float secondsOpacity = (Float) mSecondsAlphaAnimator.getAnimatedValue();
-            if (!ambientMode && secondsOpacity > 0) {
+            if (mShowSeconds && !ambientMode && secondsOpacity > 0) {
                 mSecondsRenderer.setAnimTime(System.currentTimeMillis() - mSecondsStartAnimTimeMillis);
 
                 PointF secondsSize = mSecondsRenderer.measure();
@@ -526,13 +563,24 @@ public class FormWatchFace extends CanvasWatchFaceService {
                 }
                 mSecondsRenderer.draw(canvas,
                         (mWidth + hourMinSize.x) / 2 - secondsSize.x,
-                        (bottom + hourMinSize.y) / 2
-                                + TypedValue.applyDimension(5, TypedValue.COMPLEX_UNIT_DIP,
-                                getResources().getDisplayMetrics()),
+                        (bottom + hourMinSize.y) / 2 + clockSecondsSpacing,
                         !ambientMode);
                 if (sc >= 0) {
                     canvas.restoreToCount(sc);
                 }
+            }
+
+            if (mShowDate) {
+                Paint paint = ambientMode ? mAmbientPaints.date : mNormalPaints.date;
+                float x = (mWidth - hourMinSize.x) / 2;
+                if (!mShowSeconds) {
+                    x = (mWidth - paint.measureText(mDateStr)) / 2;
+                }
+                canvas.drawText(
+                        mDateStr,
+                        x,
+                        (bottom + hourMinSize.y) / 2 + clockSecondsSpacing - paint.ascent(),
+                                paint);
             }
         }
 

@@ -17,7 +17,6 @@
 package net.nurik.roman.formwatchface;
 
 import android.app.Activity;
-import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
@@ -28,15 +27,21 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
 
-import net.nurik.roman.formwatchface.common.ChangeConfigIntentService;
 import net.nurik.roman.formwatchface.common.MuzeiArtworkImageLoader;
-import net.nurik.roman.formwatchface.common.Themes;
+import net.nurik.roman.formwatchface.common.config.ConfigHelper;
+import net.nurik.roman.formwatchface.common.config.Themes;
+import net.nurik.roman.formwatchface.common.config.UpdateConfigIntentService;
 
 public class WearableWatchFaceConfigActivity extends Activity {
+    private SharedPreferences mSharedPreferences;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.watch_face_config_activity);
+
+        mSharedPreferences = PreferenceManager.getDefaultSharedPreferences(
+                WearableWatchFaceConfigActivity.this);
 
         WearableListView listView = (WearableListView) findViewById(R.id.wearable_list);
 
@@ -82,9 +87,9 @@ public class WearableWatchFaceConfigActivity extends Activity {
             @Override
             public void onClick(WearableListView.ViewHolder viewHolder) {
                 String theme = viewHolder.itemView.getTag().toString();
-                startService(new Intent(WearableWatchFaceConfigActivity.this,
-                        ChangeConfigIntentService.class)
-                        .putExtra(ChangeConfigIntentService.EXTRA_THEME, theme));
+                mSharedPreferences.edit().putString(ConfigHelper.KEY_THEME, theme).apply();
+                UpdateConfigIntentService.startConfigChangeService(
+                        WearableWatchFaceConfigActivity.this);
                 finish();
             }
 
@@ -93,11 +98,8 @@ public class WearableWatchFaceConfigActivity extends Activity {
             }
         });
 
-        SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(
-                WearableWatchFaceConfigActivity.this);
-
         int startingIndex = 0;
-        String theme = sp.getString("theme", null);
+        String theme = mSharedPreferences.getString(ConfigHelper.KEY_THEME, null);
         if (theme != null) {
             for (int i = 0; i < Themes.THEMES.length; i++) {
                 if (Themes.THEMES[i].id.equals(theme)) {

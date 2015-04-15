@@ -21,11 +21,7 @@
     <item>
         <selector>
             <item android:state_selected="true">
-                <shape android:shape="oval">
-                    <stroke
-                        android:width="2dp"
-                        android:color="#fff" />
-                </shape>
+                <bitmap android:src="@drawable/checkmark_white" android:gravity="center" />
             </item>
         </selector>
     </item>

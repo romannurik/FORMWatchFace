@@ -14,23 +14,24 @@
  * limitations under the License.
  */
 
-package net.nurik.roman.formwatchface.common;
+package net.nurik.roman.formwatchface.common.config;
 
 import android.app.IntentService;
+import android.content.Context;
 import android.content.Intent;
 
-public class ChangeConfigIntentService extends IntentService {
-    public static final String EXTRA_THEME = "theme";
+public class UpdateConfigIntentService extends IntentService {
+    public UpdateConfigIntentService() {
+        super("UpdateConfigIntentService");
+    }
 
-    public ChangeConfigIntentService() {
-        super("ChangeConfigIntentService");
+    public static void startConfigChangeService(Context context) {
+        context.startService(new Intent(context, UpdateConfigIntentService.class));
     }
 
     @Override
     protected void onHandleIntent(Intent intent) {
-        if (intent.hasExtra(EXTRA_THEME)) {
-            ConfigHelper helper = new ConfigHelper(this);
-            helper.blockingPutTheme(intent.getStringExtra(EXTRA_THEME));
-        }
+        ConfigHelper helper = new ConfigHelper(this);
+        helper.blockingPutConfig();
     }
 }

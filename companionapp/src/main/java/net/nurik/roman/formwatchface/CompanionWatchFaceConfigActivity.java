@@ -19,9 +19,7 @@ package net.nurik.roman.formwatchface;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.annotation.TargetApi;
-import android.app.Activity;
 import android.app.LoaderManager;
-import android.content.Intent;
 import android.content.Loader;
 import android.content.SharedPreferences;
 import android.content.res.Resources;
@@ -32,6 +30,9 @@ import android.graphics.drawable.LayerDrawable;
 import android.os.Build;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
+import android.support.v4.view.ViewPager;
+import android.support.v7.app.ActionBarActivity;
+import android.util.TypedValue;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewAnimationUtils;
@@ -39,23 +40,30 @@ import android.view.ViewGroup;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 
-import net.nurik.roman.formwatchface.common.ChangeConfigIntentService;
 import net.nurik.roman.formwatchface.common.FormClockView;
 import net.nurik.roman.formwatchface.common.MathUtil;
 import net.nurik.roman.formwatchface.common.MuzeiArtworkImageLoader;
-import net.nurik.roman.formwatchface.common.Themes;
+import net.nurik.roman.formwatchface.common.config.ConfigHelper;
+import net.nurik.roman.formwatchface.common.config.Themes;
+import net.nurik.roman.formwatchface.common.config.UpdateConfigIntentService;
+import net.nurik.roman.formwatchface.ui.ScrimInsetsFrameLayout;
+import net.nurik.roman.formwatchface.ui.SimplePagerHelper;
+import net.nurik.roman.formwatchface.ui.SlidingTabLayout;
 
 import java.util.ArrayList;
 
 import static net.nurik.roman.formwatchface.common.MuzeiArtworkImageLoader.LoadedArtwork;
-import static net.nurik.roman.formwatchface.common.Themes.MUZEI_THEME;
-import static net.nurik.roman.formwatchface.common.Themes.Theme;
+import static net.nurik.roman.formwatchface.common.config.Themes.MUZEI_THEME;
+import static net.nurik.roman.formwatchface.common.config.Themes.Theme;
 
-public class CompanionWatchFaceConfigActivity extends Activity implements
-        LoaderManager.LoaderCallbacks<LoadedArtwork> {
+public class CompanionWatchFaceConfigActivity extends ActionBarActivity
+        implements LoaderManager.LoaderCallbacks<LoadedArtwork> {
+
     private static final String TAG = "CompanionWatchFaceConfigActivity";
 
     private static final int LOADER_MUZEI_ARTWORK = 1;
+
+    private SharedPreferences mSharedPreferences;
 
     private ViewGroup mThemeItemContainer;
     private ArrayList<ThemeUiHolder> mThemeUiHolders = new ArrayList<>();
@@ -75,8 +83,29 @@ public class CompanionWatchFaceConfigActivity extends Activity implements
         getWindow().getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
                         | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
-        setContentView(R.layout.activity_config);
+        setContentView(R.layout.config_activity);
 
+        mSharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
+
+        // Set up general chrome
+        ImageButton doneButton = (ImageButton) findViewById(R.id.done_button);
+        doneButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                finish();
+            }
+        });
+
+        ScrimInsetsFrameLayout scrimInsetsFrameLayout = (ScrimInsetsFrameLayout)
+                findViewById(R.id.scrim_insets_frame_layout);
+        scrimInsetsFrameLayout.setOnInsetsCallback(new ScrimInsetsFrameLayout.OnInsetsCallback() {
+            @Override
+            public void onInsetsChanged(Rect insets) {
+                findViewById(R.id.chrome_container).setPadding(0, insets.top, 0, 0);
+            }
+        });
+
+        // Set up theme list
         mMainClockContainerView = (ViewGroup) ((ViewGroup) findViewById(R.id.clock_container)).getChildAt(0);
         mMainClockView = (FormClockView) mMainClockContainerView.findViewById(R.id.clock);
 
@@ -86,12 +115,47 @@ public class CompanionWatchFaceConfigActivity extends Activity implements
         mAnimateClockContainerView.setVisibility(View.INVISIBLE);
 
         setupThemeList();
-        SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(
-                CompanionWatchFaceConfigActivity.this);
-        String themeId = sp.getString("theme", Themes.DEFAULT_THEME.id);
-        updateSelectedTheme(themeId, false);
+        String themeId = mSharedPreferences.getString("theme", Themes.DEFAULT_THEME.id);
+        updateUIToSelectedTheme(themeId, false);
 
         registerSharedPrefsListener();
+
+        // Set up complications config fragment
+        if (savedInstanceState == null) {
+            getFragmentManager()
+                    .beginTransaction()
+                    .add(R.id.config_complications_container, new ConfigComplicationsFragment())
+                    .commit();
+        }
+
+        // Set up tabs/pager
+        final ViewPager pager = (ViewPager) findViewById(R.id.view_pager);
+        pager.setPageMargin((int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 16,
+                getResources().getDisplayMetrics()));
+
+        SimplePagerHelper helper = new SimplePagerHelper(this, pager);
+        helper.addPage(R.string.title_theme, R.id.config_theme_container);
+        helper.addPage(R.string.title_complications, R.id.config_complications_container);
+
+        SlidingTabLayout slidingTabLayout = (SlidingTabLayout) findViewById(R.id.tabs);
+        slidingTabLayout.setCustomTabView(R.layout.tab_indicator, android.R.id.text1);
+
+        Resources res = getResources();
+        slidingTabLayout.setSelectedIndicatorColors(res.getColor(R.color.tab_selected_strip));
+        slidingTabLayout.setViewPager(pager);
+
+        slidingTabLayout.setOnPageChangeListener(new ViewPager.SimpleOnPageChangeListener() {
+            @Override
+            public void onPageScrolled(int position, float positionOffset, int positionOffsetPixels) {
+                super.onPageScrolled(position, positionOffset, positionOffsetPixels);
+                float translationX = -pager.getWidth();
+                if (position == 0) {
+                    translationX = -positionOffsetPixels;
+                }
+                mMainClockView.setTranslationX(translationX);
+                mAnimateClockView.setTranslationX(translationX);
+            }
+        });
     }
 
     @Override
@@ -101,24 +165,26 @@ public class CompanionWatchFaceConfigActivity extends Activity implements
     }
 
     private void registerSharedPrefsListener() {
-        PreferenceManager.getDefaultSharedPreferences(this)
-                .registerOnSharedPreferenceChangeListener(mOnSharedPreferenceChangeListener);
+        mSharedPreferences.registerOnSharedPreferenceChangeListener(mOnSharedPreferenceChangeListener);
     }
 
     private void unregisterSharedPrefsListener() {
-        PreferenceManager.getDefaultSharedPreferences(this)
-                .unregisterOnSharedPreferenceChangeListener(mOnSharedPreferenceChangeListener);
+        mSharedPreferences.unregisterOnSharedPreferenceChangeListener(mOnSharedPreferenceChangeListener);
     }
 
     private SharedPreferences.OnSharedPreferenceChangeListener mOnSharedPreferenceChangeListener
             = new SharedPreferences.OnSharedPreferenceChangeListener() {
         @Override
         public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
-            if ("theme".equals(key)) {
-                SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(
+            if (ConfigHelper.isConfigPrefKey(key)) {
+                UpdateConfigIntentService.startConfigChangeService(
                         CompanionWatchFaceConfigActivity.this);
-                String themeId = sp.getString("theme", Themes.DEFAULT_THEME.id);
-                updateSelectedTheme(themeId, true);
+
+                if (ConfigHelper.KEY_THEME.equals(key)) {
+                    String themeId = mSharedPreferences
+                            .getString(ConfigHelper.KEY_THEME, Themes.DEFAULT_THEME.id);
+                    updateUIToSelectedTheme(themeId, true);
+                }
             }
         }
     };
@@ -131,7 +197,7 @@ public class CompanionWatchFaceConfigActivity extends Activity implements
             ThemeUiHolder holder = new ThemeUiHolder();
 
             holder.theme = theme;
-            holder.container = inflater.inflate(R.layout.theme_item, mThemeItemContainer, false);
+            holder.container = inflater.inflate(R.layout.config_theme_item, mThemeItemContainer, false);
             holder.button = (ImageButton) holder.container.findViewById(R.id.button);
 
             LayerDrawable bgDrawable = (LayerDrawable)
@@ -144,10 +210,7 @@ public class CompanionWatchFaceConfigActivity extends Activity implements
             holder.button.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    updateSelectedTheme(theme.id, true);
-                    startService(new Intent(CompanionWatchFaceConfigActivity.this,
-                            ChangeConfigIntentService.class)
-                            .putExtra(ChangeConfigIntentService.EXTRA_THEME, theme.id));
+                    updateAndPersistTheme(theme);
                 }
             });
 
@@ -168,7 +231,7 @@ public class CompanionWatchFaceConfigActivity extends Activity implements
 
         final Theme theme = Themes.MUZEI_THEME;
         holder.theme = theme;
-        holder.container = inflater.inflate(R.layout.theme_item, mThemeItemContainer, false);
+        holder.container = inflater.inflate(R.layout.config_theme_item, mThemeItemContainer, false);
         holder.button = (ImageButton) holder.container.findViewById(R.id.button);
 
         LayerDrawable bgDrawable = (LayerDrawable)
@@ -178,10 +241,7 @@ public class CompanionWatchFaceConfigActivity extends Activity implements
         holder.button.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                updateSelectedTheme(theme.id, true);
-                startService(new Intent(CompanionWatchFaceConfigActivity.this,
-                        ChangeConfigIntentService.class)
-                        .putExtra(ChangeConfigIntentService.EXTRA_THEME, theme.id));
+                updateAndPersistTheme(theme);
             }
         });
 
@@ -191,6 +251,11 @@ public class CompanionWatchFaceConfigActivity extends Activity implements
 
         // begin load using fragments
         getLoaderManager().initLoader(LOADER_MUZEI_ARTWORK, null, this);
+    }
+
+    private void updateAndPersistTheme(Theme theme) {
+        updateUIToSelectedTheme(theme.id, true);
+        mSharedPreferences.edit().putString(ConfigHelper.KEY_THEME, theme.id).apply();
     }
 
     @Override
@@ -212,7 +277,7 @@ public class CompanionWatchFaceConfigActivity extends Activity implements
     }
 
     @TargetApi(Build.VERSION_CODES.LOLLIPOP)
-    private void updateSelectedTheme(String themeId, boolean animate) {
+    private void updateUIToSelectedTheme(String themeId, boolean animate) {
         for (final ThemeUiHolder holder : mThemeUiHolders) {
             boolean selected = holder.theme.id.equals(themeId);
 

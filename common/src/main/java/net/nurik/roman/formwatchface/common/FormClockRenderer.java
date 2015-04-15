@@ -415,6 +415,7 @@ public class FormClockRenderer {
     public static class ClockPaints {
         public Paint fills[] = new Paint[3];
         public Paint strokes[] = new Paint[3]; // optional
+        public Paint date;
         public boolean hasStroke = false;
     }
 

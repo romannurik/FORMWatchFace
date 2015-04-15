@@ -19,10 +19,10 @@
     package="net.nurik.roman.formwatchface.common">
 
     <application>
-        <service android:name="net.nurik.roman.formwatchface.common.ChangeConfigIntentService" />
+        <service android:name=".config.UpdateConfigIntentService" />
 
         <service
-            android:name="net.nurik.roman.formwatchface.common.WearableListenerService"
+            android:name=".config.ConfigChangeListenerService"
             tools:ignore="ExportedService">
             <intent-filter>
                 <action android:name="com.google.android.gms.wearable.BIND_LISTENER" />

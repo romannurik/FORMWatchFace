@@ -1,11 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
 <!--
-  Copyright 2014 Google Inc.
+  Copyright 2015 Google Inc.
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
   You may obtain a copy of the License at
 
-      http://www.apache.org/licenses/LICENSE-2.0
+       http://www.apache.org/licenses/LICENSE-2.0
 
   Unless required by applicable law or agreed to in writing, software
   distributed under the License is distributed on an "AS IS" BASIS,
@@ -15,11 +16,5 @@
   -->
 
 <resources>
-
-    <string name="app_name">FORM Watch Face</string>
-    <string name="config_label">FORM Watch Face Configuration</string>
-    <string name="title_theme">Theme</string>
-    <string name="title_complications">Complications</string>
-    <string name="done">Done</string>
-
+    <color name="tab_selected_strip">#fff</color>
 </resources>

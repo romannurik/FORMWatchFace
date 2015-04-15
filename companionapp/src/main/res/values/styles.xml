@@ -15,7 +15,11 @@
   -->
 
 <resources>
-    <style name="AppTheme.Base" parent="android:Theme.Holo.NoActionBar" />
+    <style name="AppTheme.Base" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="colorPrimary">#fff</item>
+        <item name="colorAccent">#fff</item>
+    </style>
 
     <style name="AppTheme" parent="AppTheme.Base">
         <item name="android:windowBackground">@android:color/transparent</item>

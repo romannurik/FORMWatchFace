@@ -1,11 +1,11 @@
 /*
- * Copyright 2014 Google Inc.
+ * Copyright 2015 Google Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -14,10 +14,14 @@
  * limitations under the License.
  */
 
-package net.nurik.roman.formwatchface.common;
+package net.nurik.roman.formwatchface.common.config;
 
 import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Build;
+import android.preference.PreferenceManager;
+import android.text.TextUtils;
 import android.util.Log;
 
 import com.google.android.gms.common.ConnectionResult;
@@ -30,12 +34,31 @@ import com.google.android.gms.wearable.DataMapItem;
 import com.google.android.gms.wearable.PutDataMapRequest;
 import com.google.android.gms.wearable.Wearable;
 
+import java.util.Arrays;
 import java.util.Calendar;
+import java.util.HashSet;
 import java.util.Iterator;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 public class ConfigHelper {
     private static final String TAG = "ConfigHelper";
+
+    public static final String KEY_THEME = "pref_theme";
+    public static final String KEY_SHOW_NOTIFICATION_COUNT = "pref_show_notification_count";
+    public static final String KEY_SHOW_DATE = "pref_show_date";
+    public static final String KEY_SHOW_SECONDS = "pref_show_seconds";
+
+    private static final Set<String> STRING_CONFIG_KEYS = new HashSet<>(Arrays.asList(
+            KEY_THEME
+    ));
+
+    private static final Set<String> BOOLEAN_CONFIG_KEYS = new HashSet<>(Arrays.asList(
+            KEY_SHOW_NOTIFICATION_COUNT,
+            KEY_SHOW_DATE,
+            KEY_SHOW_SECONDS
+    ));
+
     private final Context mContext;
     private GoogleApiClient mGoogleApiClient;
 
@@ -69,10 +92,12 @@ public class ConfigHelper {
         }
     }
 
-    public void blockingPutTheme(String theme) {
+    public void blockingPutConfig() {
         if (connect()) {
-            PutDataMapRequest dataMapRequest = PutDataMapRequest.create("/theme");
-            dataMapRequest.getDataMap().putString("theme", theme);
+            DataMap dataMap = readConfigDataMapFromSharedPrefs();
+            PutDataMapRequest dataMapRequest = PutDataMapRequest.create("/config");
+            dataMapRequest.getDataMap().putDataMap("config", dataMap);
+
             // NOTE: Need to use timestamps because there's a separate data item for the companion
             // and the wearable
             // TODO: find a better way to get cross-device timestamps
@@ -82,9 +107,7 @@ public class ConfigHelper {
         }
     }
 
-    public String blockingGetTheme() {
-        String theme = Themes.DEFAULT_THEME.id;
-
+    public void blockingReadConfig() {
         long latestTimestamp = 0;
         if (connect()) {
             // Read all DataItems
@@ -93,10 +116,12 @@ public class ConfigHelper {
                 Log.e(TAG, "Error getting all data items: " + dataItemBuffer.getStatus().getStatusMessage());
             }
 
+            DataMap configDataMap = null;
+
             Iterator<DataItem> dataItemIterator = dataItemBuffer.singleRefIterator();
             while (dataItemIterator.hasNext()) {
                 DataItem dataItem = dataItemIterator.next();
-                if (!dataItem.getUri().getPath().equals("/theme")) {
+                if (!dataItem.getUri().getPath().equals("/config")) {
                     Log.w(TAG, "Ignoring data item " + dataItem.getUri().getPath());
                     continue;
                 }
@@ -105,16 +130,67 @@ public class ConfigHelper {
                 DataMap dataMap = dataMapItem.getDataMap();
                 long timestamp = dataMap.getLong("timestamp");
                 if (timestamp >= latestTimestamp) {
-                    theme = dataMapItem.getDataMap().getString("theme", Themes.DEFAULT_THEME.id);
+                    configDataMap = dataMapItem.getDataMap().getDataMap("config");
                     latestTimestamp = timestamp;
                 }
+            }
+
+            if (configDataMap != null) {
+                putConfigDataMapToSharedPrefs(configDataMap);
             }
 
             dataItemBuffer.close();
 
             disconnect();
         }
+    }
 
-        return theme;
+    public static boolean isConfigPrefKey(String key) {
+        return BOOLEAN_CONFIG_KEYS.contains(key) || STRING_CONFIG_KEYS.contains(key);
+    }
+
+    private DataMap readConfigDataMapFromSharedPrefs() {
+        DataMap dataMap = new DataMap();
+        SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(mContext);
+
+        for (String key : BOOLEAN_CONFIG_KEYS) {
+            if (sp.contains(key)) {
+                dataMap.putBoolean(key, sp.getBoolean(key, false));
+            }
+        }
+
+        for (String key : STRING_CONFIG_KEYS) {
+            String value = sp.getString(key, null);
+            if (value != null) {
+                dataMap.putString(key, value);
+            }
+        }
+
+        return dataMap;
+    }
+
+    private void putConfigDataMapToSharedPrefs(DataMap dataMap) {
+        SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(mContext);
+        SharedPreferences.Editor editor = sp.edit();
+
+        for (String key : BOOLEAN_CONFIG_KEYS) {
+            if (dataMap.containsKey(key)) {
+                boolean value = dataMap.getBoolean(key);
+                if (sp.getBoolean(key, false) != value) {
+                    editor.putBoolean(key, value);
+                }
+            }
+        }
+
+        for (String key : STRING_CONFIG_KEYS) {
+            if (dataMap.containsKey(key)) {
+                String value = dataMap.getString(key);
+                if (!TextUtils.equals(sp.getString(key, null), value)) {
+                    editor.putString(key, dataMap.getString(key));
+                }
+            }
+        }
+
+        editor.apply();
     }
 }
