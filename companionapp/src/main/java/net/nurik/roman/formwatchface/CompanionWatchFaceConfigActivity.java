@@ -317,7 +317,7 @@ public class CompanionWatchFaceConfigActivity extends ActionBarActivity
                             updatePreviewView(holder.theme, mMainClockContainerView, mMainClockView);
                         }
                     });
-                    mAnimateClockView.syncWith(mMainClockView);
+
                     mAnimateClockView.postInvalidateOnAnimation();
                     mCurrentRevealAnimator.start();
                 } else {

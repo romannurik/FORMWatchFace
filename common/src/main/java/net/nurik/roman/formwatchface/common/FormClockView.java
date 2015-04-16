@@ -19,38 +19,18 @@ package net.nurik.roman.formwatchface.common;
 import android.annotation.TargetApi;
 import android.content.Context;
 import android.content.res.TypedArray;
-import android.graphics.Bitmap;
-import android.graphics.BitmapShader;
 import android.graphics.Canvas;
-import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.PointF;
-import android.graphics.Shader;
 import android.os.Build;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.util.TypedValue;
 import android.view.View;
 
-import java.util.Calendar;
-import java.util.Date;
-
-import static net.nurik.roman.formwatchface.common.FormClockRenderer.TimeInfo;
-
-
 public class FormClockView extends View {
-    private static final String TAG = "FormClockView";
-
-    private static final long BASE_TIME_MILLIS = new Date(2015, 2, 22, 12, 59, 49).getTime();
-    private static final long BOOT_TIME_MILLIS = System.currentTimeMillis();
-
     private FormClockRenderer mHourMinRenderer;
     private FormClockRenderer mSecondsRenderer;
-
-    private long mHourMinStartAnimTimeMillis = Long.MAX_VALUE;
-    private long mSecondsStartAnimTimeMillis = Long.MAX_VALUE;
-
-    private long mLastAnimatedCurrentTimeSec;
-    private boolean mFirstFrame = true;
 
     private int mWidth, mHeight;
 
@@ -99,7 +79,7 @@ public class FormClockView extends View {
         options.onlySeconds = true;
         options.textSize /= 2;
         options.glyphAnimAverageDelay = 0;
-        options.glyphAnimDuration = 960;
+        options.glyphAnimDuration = 750;
 
         mSecondsRenderer = new FormClockRenderer(options, null);
 
@@ -142,40 +122,15 @@ public class FormClockView extends View {
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
 
-        long currentTimeMillis = System.currentTimeMillis();
-
-        long currentTimeSec = System.currentTimeMillis() / 1000;
-        if (mLastAnimatedCurrentTimeSec != currentTimeSec || mFirstFrame) {
-            mLastAnimatedCurrentTimeSec = currentTimeSec;
-
-            TimeInfo ti = getCurrentTimeInfo();
-            TimeInfo prevTi = ti.previous();
-
-            mSecondsStartAnimTimeMillis = currentTimeMillis;
-            mSecondsRenderer.setTime(new TimeInfo(prevTi.s));
-
-            if (prevTi.m != ti.m || mFirstFrame) {
-                if (mFirstFrame) {
-                    mHourMinStartAnimTimeMillis = Long.MAX_VALUE;
-                } else {
-                    mHourMinStartAnimTimeMillis = currentTimeMillis;
-                }
-                mHourMinRenderer.setTime(new TimeInfo(prevTi.h, prevTi.m));
-            }
-
-            mFirstFrame = false;
-        }
-
+        mHourMinRenderer.updateTime();
         PointF hourMinSize = mHourMinRenderer.measure();
-
-        mHourMinRenderer.setAnimTime(currentTimeMillis - mHourMinStartAnimTimeMillis);
-        mHourMinRenderer.draw(canvas, (mWidth - hourMinSize.x) / 2, (mHeight - hourMinSize.y) / 2,
+        mHourMinRenderer.draw(canvas,
+                (mWidth - hourMinSize.x) / 2,
+                (mHeight - hourMinSize.y) / 2,
                 false);
 
-        mSecondsRenderer.setAnimTime(currentTimeMillis - mSecondsStartAnimTimeMillis);
-
+        mSecondsRenderer.updateTime();
         PointF secondsSize = mSecondsRenderer.measure();
-
         mSecondsRenderer.draw(canvas,
                 (mWidth + hourMinSize.x) / 2 - secondsSize.x,
                 (mHeight + hourMinSize.y) / 2
@@ -183,24 +138,12 @@ public class FormClockView extends View {
                         getResources().getDisplayMetrics()),
                 false);
 
-        postInvalidateOnAnimation();
-    }
-
-    private TimeInfo getCurrentTimeInfo() {
-        Calendar now = Calendar.getInstance();
-//        long v = BASE_TIME_MILLIS + (System.currentTimeMillis() - BOOT_TIME_MILLIS);
-//        now.setTimeInMillis(v);
-        int h = now.get(Calendar.HOUR);
-        return new TimeInfo(
-                h == 0 ? 12 : h,
-                now.get(Calendar.MINUTE),
-                now.get(Calendar.SECOND));
-    }
-
-    public void syncWith(FormClockView clockView) {
-        mHourMinStartAnimTimeMillis = clockView.mHourMinStartAnimTimeMillis;
-        mSecondsStartAnimTimeMillis = clockView.mSecondsStartAnimTimeMillis;
-        mLastAnimatedCurrentTimeSec = clockView.mLastAnimatedCurrentTimeSec;
-        mFirstFrame = true;
+        long timeToNextSecondsAnimation = mSecondsRenderer.timeToNextAnimation();
+        long timeToNextHourMinAnimation = mHourMinRenderer.timeToNextAnimation();
+        if (timeToNextHourMinAnimation < 0 || timeToNextSecondsAnimation < 0) {
+            postInvalidateOnAnimation();
+        } else {
+            postInvalidateDelayed(Math.min(timeToNextHourMinAnimation, timeToNextSecondsAnimation));
+        }
     }
 }

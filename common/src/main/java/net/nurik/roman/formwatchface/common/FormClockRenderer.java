@@ -25,23 +25,32 @@ import android.graphics.PointF;
 import android.graphics.RectF;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Calendar;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 
-import static net.nurik.roman.formwatchface.common.MathUtil.accelerate2;
-import static net.nurik.roman.formwatchface.common.MathUtil.constrain;
+import static net.nurik.roman.formwatchface.common.MathUtil.accelerate5;
 import static net.nurik.roman.formwatchface.common.MathUtil.decelerate5;
 import static net.nurik.roman.formwatchface.common.MathUtil.interpolate;
 import static net.nurik.roman.formwatchface.common.MathUtil.progress;
 
 public class FormClockRenderer {
+    private static final long DEBUG_TIME_MILLIS = 0; //new Date(2015, 2, 22, 12, 59, 52).getTime();
+    private static final long BOOT_TIME_MILLIS = System.currentTimeMillis();
+
     private static final String DEBUG_TIME = null;//"0123456789";
     private static final String DEBUG_GLYPH = null;//"2_3";
     private static final boolean DEBUG_SHOW_RECTS = false;
 
-    private ArrayList<Integer> mAnimatedGlyphIndices = new ArrayList<>();
-    private ArrayList<Glyph> mGlyphs = new ArrayList<>();
+    private int[] mAnimatedGlyphIndices = new int[20];
+    private int[] mTempAnimatedGlyphIndices = new int[20];
+    private int mAnimatedGlyphIndexCount = 0;
+    private Glyph[] mGlyphs = new Glyph[20];
+    private int mGlyphCount = 0;
+
     private Options mOptions;
     private ClockPaints mPaints;
     private Font mFont = new Font();
@@ -54,16 +63,21 @@ public class FormClockRenderer {
 
     private Paint mDebugShowRectPaint;
 
-    private float mLastGlyphStartAnimTime;
-    private float mEndAnimTime;
-    private float mAnimTime;
+    private long mAnimDuration;
+    private long mAnimTime;
+
+    private Calendar mTempCalendar;
+    private long mTimeMillis;
+    private long mMillisToNext;
 
     private PointF mMeasuredSize = new PointF();
 
     public FormClockRenderer(Options options, ClockPaints paints) {
         this.mOptions = options;
         this.mPaints = paints;
-        initGlyphBitmap();
+        this.mTempCalendar = Calendar.getInstance();
+        updateTime();
+        initOffsGlyphBitmap();
 
         if (DEBUG_SHOW_RECTS) {
             mDebugShowRectPaint = new Paint();
@@ -73,7 +87,7 @@ public class FormClockRenderer {
         }
     }
 
-    private void initGlyphBitmap() {
+    private void initOffsGlyphBitmap() {
         mOffsGlyphBitmapUnpaddedSize = Font.DRAWHEIGHT * 5;
         while (mOptions.textSize < mOffsGlyphBitmapUnpaddedSize) {
             int newUnpaddedSize = mOffsGlyphBitmapUnpaddedSize;
@@ -103,44 +117,82 @@ public class FormClockRenderer {
         mPaints = paints;
     }
 
-    public void setTime(TimeInfo ti) {
-        String str1 = ti.timeString();
-        String str2 = ti.next().timeString();
+    public void updateTime() {
+        mTimeMillis = System.currentTimeMillis();
+        if (DEBUG_TIME_MILLIS > 0) {
+            long v = DEBUG_TIME_MILLIS + (System.currentTimeMillis() - BOOT_TIME_MILLIS);
+            mTimeMillis = v;
+        }
 
-        mAnimatedGlyphIndices.clear();
-        mGlyphs.clear();
+        mTempCalendar.setTimeInMillis(mTimeMillis);
+
+        String currentTimeStr, nextTimeStr;
+        mTempCalendar.set(Calendar.MILLISECOND, 0);
+        if (mOptions.onlySeconds) {
+            currentTimeStr = secondsString(mTempCalendar);
+            mTempCalendar.add(Calendar.SECOND, 1);
+            nextTimeStr = secondsString(mTempCalendar);
+        } else {
+            mTempCalendar.set(Calendar.SECOND, 0);
+            currentTimeStr = hourMinString(mTempCalendar);
+            mTempCalendar.add(Calendar.MINUTE, 1);
+            nextTimeStr = hourMinString(mTempCalendar);
+        }
+
+        mMillisToNext = mTempCalendar.getTimeInMillis() - mTimeMillis;
+        updateGlyphsAndAnimDuration(currentTimeStr, nextTimeStr);
+
+        if (mMillisToNext < mAnimDuration) {
+            // currently animating
+            mAnimTime = mAnimDuration - mMillisToNext;
+        } else {
+            mAnimTime = 0;
+        }
+    }
+
+    public void updateGlyphsAndAnimDuration(String currentTimeStr, String nextTimeStr) {
+        mAnimatedGlyphIndexCount = 0;
+        mGlyphCount = 0;
 
         if (DEBUG_GLYPH != null) {
-            mGlyphs.add(mFont.getGlyph(DEBUG_GLYPH));
-            mAnimatedGlyphIndices.add(0);
+            mGlyphs[mGlyphCount++] = mFont.getGlyph(DEBUG_GLYPH);
+            mTempAnimatedGlyphIndices[mAnimatedGlyphIndexCount++] = 0;
         } else if (DEBUG_TIME != null) {
             for (int i = 0; i < DEBUG_TIME.length(); i++) {
-                mGlyphs.add(mFont.getGlyph(Character.toString(DEBUG_TIME.charAt(i))));
+                mGlyphs[mGlyphCount++] = mFont.getGlyph(Character.toString(DEBUG_TIME.charAt(i)));
             }
         } else {
-            int len = str1.length();
+            int len = currentTimeStr.length();
             for (int i = 0; i < len; i++) {
-                char c1 = str1.charAt(i);
-                char c2 = str2.charAt(i);
+                char c1 = currentTimeStr.charAt(i);
+                char c2 = nextTimeStr.charAt(i);
 
                 if (c1 == ':') {
-                    mGlyphs.add(mFont.getGlyph(":"));
+                    mGlyphs[mGlyphCount++] = mFont.getGlyph(":");
                     continue;
                 }
 
                 if (c1 == c2) {
-                    mGlyphs.add(mFont.getGlyph(String.valueOf(c1)));
+                    mGlyphs[mGlyphCount++] = mFont.getGlyph(String.valueOf(c1));
                 } else {
-                    mAnimatedGlyphIndices.add(i);
-                    mGlyphs.add(mFont.getGlyph(c1 + "_" + c2));
+                    mTempAnimatedGlyphIndices[mAnimatedGlyphIndexCount++] = i;
+                    mGlyphs[mGlyphCount++] = mFont.getGlyph(c1 + "_" + c2);
                 }
             }
         }
 
-        Collections.reverse(mAnimatedGlyphIndices);
-        mLastGlyphStartAnimTime = mAnimatedGlyphIndices.size() * mOptions.glyphAnimAverageDelay;
-        mEndAnimTime = mLastGlyphStartAnimTime + mOptions.glyphAnimDuration;
+        // reverse animted glyph indices
+        for (int i = 0; i < mAnimatedGlyphIndexCount; i++) {
+            mAnimatedGlyphIndices[i] = mTempAnimatedGlyphIndices[mAnimatedGlyphIndexCount - i - 1];
+        }
+
+        mAnimDuration = mAnimatedGlyphIndexCount * mOptions.glyphAnimAverageDelay
+                + mOptions.glyphAnimDuration;
         mAnimTime = 0;
+    }
+
+    public long timeToNextAnimation() {
+        return mMillisToNext - mAnimDuration;
     }
 
     public PointF measure() {
@@ -158,8 +210,8 @@ public class FormClockRenderer {
     private void layoutPass(LayoutPassCallback cb, RectF rectF) {
         float x = 0;
 
-        for (int i = 0; i < mGlyphs.size(); i++) {
-            Glyph glyph = mGlyphs.get(i);
+        for (int i = 0; i < mGlyphCount; i++) {
+            Glyph glyph = mGlyphs[i];
 
             float t = getGlyphAnimProgress(i);
             float glyphWidth = glyph.getWidthAtProgress(t) * mOptions.textSize / Font.DRAWHEIGHT;
@@ -228,184 +280,67 @@ public class FormClockRenderer {
     }
 
     private float getGlyphAnimProgress(int glyphIndex) {
-        int indexIntoAnimatedGlyphs = mAnimatedGlyphIndices.indexOf(glyphIndex);
+        int indexIntoAnimatedGlyphs = -1;
+        for (int i = 0; i < mAnimatedGlyphIndexCount; i++) {
+            if (mAnimatedGlyphIndices[i] == glyphIndex) {
+                indexIntoAnimatedGlyphs = i;
+                break;
+            }
+        }
+
         if (indexIntoAnimatedGlyphs < 0) {
             return 0; // glyphs not currently animating are rendered at t=0
         }
 
         // this glyph is animating
-        float glyphStartAnimTime = interpolate(accelerate2(
-                        indexIntoAnimatedGlyphs * 1f / mAnimatedGlyphIndices.size()),
-                0, mLastGlyphStartAnimTime);
+        float glyphStartAnimTime = 0;
+        if (mAnimatedGlyphIndexCount > 1) {
+            glyphStartAnimTime = interpolate(accelerate5(
+                            indexIntoAnimatedGlyphs * 1f / (mAnimatedGlyphIndexCount - 1)),
+                    0, mAnimDuration - mOptions.glyphAnimDuration);
+        }
         return progress(mAnimTime, glyphStartAnimTime, glyphStartAnimTime
                 + mOptions.glyphAnimDuration);
     }
 
-    public void setAnimTime(float t) {
-        mAnimTime = constrain(t, 0, mEndAnimTime);
+    String secondsString(Calendar c) {
+        int s = c.get(Calendar.SECOND);
+        return ":"
+                + (s < 10 ? "0" : "")
+                + s;
     }
 
-    public float getEndTime() {
-        return mEndAnimTime;
+    String hourMinString(Calendar c) {
+        int h = c.get(Calendar.HOUR);
+        if (!mOptions.is24hour && h == 0) {
+            h = 12;
+        }
+        int m = c.get(Calendar.MINUTE);
+        return (h < 10 ? " " : "")
+                + h
+                + ":" + (m < 10 ? "0" : "")
+                + m;
     }
 
-    private static interface LayoutPassCallback {
-        public void visitGlyph(Glyph glyph, float glyphAnimProgress, RectF rect);
-    }
-
-    public static class TimeInfo {
-        private static final int EMPTY_VALUE = Integer.MIN_VALUE; // don't use -1!!
-        public int h;
-        public int m;
-        public int s;
-        public boolean is24Hour;
-
-        public TimeInfo(int h, int m, int s) {
-            this.h = h;
-            this.m = m;
-            this.s = s;
-        }
-
-        public TimeInfo(int h, int m) {
-            this(h, m, EMPTY_VALUE);
-        }
-
-        public TimeInfo(int s) {
-            this(EMPTY_VALUE, EMPTY_VALUE, s);
-        }
-
-        public TimeInfo(TimeInfo other) {
-            this(other.h, other.m, other.s);
-        }
-
-        public boolean hasSeconds() {
-            return s != EMPTY_VALUE;
-        }
-
-        public boolean hasHoursMinutes() {
-            return h != EMPTY_VALUE && m != EMPTY_VALUE;
-        }
-
-        public TimeInfo clone() {
-            return new TimeInfo(this);
-        }
-
-        public TimeInfo removeSeconds() {
-            s = EMPTY_VALUE;
-            return this;
-        }
-
-        public TimeInfo removeHoursMinutes() {
-            h = m = EMPTY_VALUE;
-            return this;
-        }
-
-        public TimeInfo next() {
-            TimeInfo next = new TimeInfo(this.h, this.m, this.s);
-
-            if (next.hasSeconds()) {
-                ++next.s;
-                if (next.s >= 60) {
-                    next.s = 0;
-                    if (next.hasHoursMinutes()) {
-                        ++next.m;
-                    }
-                }
-            } else if (next.hasHoursMinutes()) {
-                ++next.m;
-            }
-
-            if (next.hasHoursMinutes()) {
-                if (next.m >= 60) {
-                    next.m = 0;
-                    ++next.h;
-                }
-
-                if (is24Hour) {
-                    if (next.h >= 24) {
-                        next.h = 0;
-                    }
-                } else {
-                    if (next.h >= 13) {
-                        next.h = 1;
-                    }
-                }
-
-                return next;
-            }
-
-            return next;
-        }
-
-        public TimeInfo previous() {
-            TimeInfo prev = new TimeInfo(this.h, this.m, this.s);
-
-            if (prev.hasSeconds()) {
-                --prev.s;
-                if (prev.s < 0) {
-                    prev.s = 59;
-                    if (prev.hasHoursMinutes()) {
-                        --prev.m;
-                    }
-                }
-            } else if (prev.hasHoursMinutes()) {
-                --prev.m;
-            }
-
-            if (prev.hasHoursMinutes()) {
-                if (prev.m < 0) {
-                    prev.m = 59;
-                    --prev.h;
-                }
-
-                if (is24Hour) {
-                    if (prev.h < 0) {
-                        prev.h = 23;
-                    }
-                } else {
-                    if (prev.h < 1) {
-                        prev.h = 12;
-                    }
-                }
-
-                return prev;
-            }
-
-            return prev;
-        }
-
-        private static StringBuilder mTimeStrSB = new StringBuilder();
-
-        public String timeString() {
-            mTimeStrSB.setLength(0);
-            if (h >= 0 && m >= 0) {
-                mTimeStrSB.append(h < 10 ? " " : "").append(h);
-                mTimeStrSB.append(":");
-                mTimeStrSB.append(m < 10 ? "0" : "").append(m);
-            }
-            if (s >= 0) {
-                mTimeStrSB.append(":");
-                mTimeStrSB.append(s < 10 ? "0" : "").append(s);
-            }
-            return mTimeStrSB.toString();
-        }
+    private interface LayoutPassCallback {
+        void visitGlyph(Glyph glyph, float glyphAnimProgress, RectF rect);
     }
 
     public static class Options {
         public float textSize;
-        public float charSpacing;
         public boolean onlySeconds;
+        public float charSpacing;
         public boolean is24hour;
-        public float glyphAnimAverageDelay;
-        public float glyphAnimDuration;
+        public int glyphAnimAverageDelay;
+        public int glyphAnimDuration;
 
         public Options() {
         }
 
         public Options(Options copy) {
             this.textSize = copy.textSize;
-            this.charSpacing = copy.charSpacing;
             this.onlySeconds = copy.onlySeconds;
+            this.charSpacing = copy.charSpacing;
             this.is24hour = copy.is24hour;
             this.glyphAnimAverageDelay = copy.glyphAnimAverageDelay;
             this.glyphAnimDuration = copy.glyphAnimDuration;

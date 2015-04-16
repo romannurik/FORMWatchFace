@@ -17,13 +17,13 @@
 <resources>
     <dimen name="main_clock_height">36dp</dimen>
     <dimen name="main_clock_spacing">3dp</dimen>
-    <integer name="main_clock_glyph_anim_delay">1000</integer>
+    <integer name="main_clock_glyph_anim_delay">500</integer>
     <integer name="main_clock_glyph_anim_duration">2000</integer>
 
     <dimen name="seconds_clock_height">16dp</dimen>
     <dimen name="seconds_clock_spacing">3dp</dimen>
     <integer name="seconds_clock_glyph_anim_delay">0</integer>
-    <integer name="seconds_clock_glyph_anim_duration">970</integer>
+    <integer name="seconds_clock_glyph_anim_duration">750</integer>
 
     <dimen name="seconds_height">15dp</dimen>
     <dimen name="clock_seconds_spacing">5dp</dimen>

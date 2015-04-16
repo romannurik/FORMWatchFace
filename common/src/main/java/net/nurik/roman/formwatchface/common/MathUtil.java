@@ -48,10 +48,6 @@ public class MathUtil {
         return FloatMath.pow(t, 5);
     }
 
-    public static float accelerate2(float t) {
-        return FloatMath.pow(t, 5);
-    }
-
     public static float decelerate5(float t) {
         return 1 - FloatMath.pow(1 - t, 5);
     }

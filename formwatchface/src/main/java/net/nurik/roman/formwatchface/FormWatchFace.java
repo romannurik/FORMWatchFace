@@ -34,6 +34,8 @@ import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Message;
 import android.preference.PreferenceManager;
 import android.support.wearable.watchface.CanvasWatchFaceService;
 import android.support.wearable.watchface.WatchFaceService;
@@ -52,12 +54,10 @@ import net.nurik.roman.formwatchface.common.MathUtil;
 import net.nurik.roman.formwatchface.common.config.ConfigHelper;
 import net.nurik.roman.formwatchface.common.config.Themes;
 
-import java.lang.reflect.Type;
 import java.util.Calendar;
 
 import static net.nurik.roman.formwatchface.LogUtil.LOGD;
 import static net.nurik.roman.formwatchface.common.FormClockRenderer.ClockPaints;
-import static net.nurik.roman.formwatchface.common.FormClockRenderer.TimeInfo;
 import static net.nurik.roman.formwatchface.common.MathUtil.decelerate2;
 import static net.nurik.roman.formwatchface.common.MathUtil.interpolate;
 import static net.nurik.roman.formwatchface.common.MuzeiArtworkImageLoader.LoadedArtwork;
@@ -67,9 +67,6 @@ import static net.nurik.roman.formwatchface.common.config.Themes.Theme;
 @TargetApi(Build.VERSION_CODES.LOLLIPOP)
 public class FormWatchFace extends CanvasWatchFaceService {
     private static final String TAG = "FormClockWatchFace";
-
-    private static final long DEBUG_BASE_TIME_MILLIS = 0;//new Date(2015, 1, 1, 11, 59, 53).getTime();
-    private static final long BOOT_TIME_MILLIS = System.currentTimeMillis();
 
     private static final int UPDATE_THEME_ANIM_DURATION = 2000;
 
@@ -97,15 +94,8 @@ public class FormWatchFace extends CanvasWatchFaceService {
         // FORM clock renderer specific stuff
         private FormClockRenderer mHourMinRenderer;
         private FormClockRenderer mSecondsRenderer;
-
-        private String mDateStr;
-
-        private long mHourMinStartAnimTimeMillis;
-        private long mSecondsStartAnimTimeMillis;
         private long mUpdateThemeStartAnimTimeMillis;
-
-        private long mLastAnimatedCurrentTimeSec;
-        private boolean mFirstFrame = true;
+        private String mDateStr;
 
         /**
          * Whether the display supports fewer bits for each color in ambient mode. When true, we
@@ -113,7 +103,6 @@ public class FormWatchFace extends CanvasWatchFaceService {
          */
         private boolean mLowBitAmbient;
         private boolean mBurnInProtection;
-        private boolean mIsRound;
 
         private boolean mShowNotificationCount;
         private boolean mShowSeconds;
@@ -132,6 +121,8 @@ public class FormWatchFace extends CanvasWatchFaceService {
         public void onCreate(SurfaceHolder holder) {
             LOGD(TAG, "onCreate");
             super.onCreate(holder);
+
+            updateDateStr();
 
             mMute = getInterruptionFilter() == WatchFaceService.INTERRUPTION_FILTER_NONE;
             handleConfigUpdated();
@@ -175,8 +166,8 @@ public class FormWatchFace extends CanvasWatchFaceService {
             mHourMinRenderer = new FormClockRenderer(options, mNormalPaints);
 
             options = new FormClockRenderer.Options(options);
-            options.onlySeconds = true;
             options.textSize = getResources().getDimensionPixelSize(R.dimen.seconds_clock_height);
+            options.onlySeconds = true;
             options.charSpacing = getResources().getDimensionPixelSize(R.dimen.seconds_clock_spacing);
             options.glyphAnimAverageDelay = getResources().getInteger(R.integer.seconds_clock_glyph_anim_delay);
             options.glyphAnimDuration = getResources().getInteger(R.integer.seconds_clock_glyph_anim_duration);
@@ -231,7 +222,6 @@ public class FormWatchFace extends CanvasWatchFaceService {
         @TargetApi(Build.VERSION_CODES.LOLLIPOP)
         public void onApplyWindowInsets(WindowInsets insets) {
             super.onApplyWindowInsets(insets);
-            mIsRound = insets.isRound();
             updateWatchFaceStyle();
         }
 
@@ -396,6 +386,7 @@ public class FormWatchFace extends CanvasWatchFaceService {
         public void onTimeTick() {
             super.onTimeTick();
             LOGD(TAG, "onTimeTick: ambient = " + isInAmbientMode());
+            updateDateStr();
             postInvalidate();
         }
 
@@ -428,42 +419,14 @@ public class FormWatchFace extends CanvasWatchFaceService {
 
             // Figure out what to animate
             long currentTimeMillis = System.currentTimeMillis();
-
-            long currentTimeSec = System.currentTimeMillis() / 1000;
-            if (mFirstFrame) {
-                // show minutes and seconds at t=1
-                mHourMinStartAnimTimeMillis = 0;
-                mSecondsStartAnimTimeMillis = 0;
-
-                TimeInfo ti = getCurrentTimeInfo();
-                mHourMinRenderer.setTime(ti.clone().removeSeconds().previous());
-                mSecondsRenderer.setTime(ti.removeHoursMinutes().previous());
-                mFirstFrame = false;
-                updateDateStr();
-
-            } else if (mLastAnimatedCurrentTimeSec != currentTimeSec) {
-                // kick off seconds change animation
-                mLastAnimatedCurrentTimeSec = currentTimeSec;
-
-                TimeInfo ti = getCurrentTimeInfo();
-                TimeInfo prevTi = ti.previous();
-
-                mSecondsStartAnimTimeMillis = currentTimeMillis;
-                mSecondsRenderer.setTime(prevTi.clone().removeHoursMinutes());
-                mHourMinRenderer.setTime(ti.removeSeconds().previous());
-
-                if (prevTi.m != ti.m) {
-                    // kick off minute change animation
-                    mHourMinStartAnimTimeMillis = currentTimeMillis;
-                }
-                updateDateStr();
-            }
-
-            mHourMinRenderer.setAnimTime(
-                    ambientMode ? Integer.MAX_VALUE : (currentTimeMillis - mHourMinStartAnimTimeMillis));
-
             mHourMinRenderer.setPaints(ambientMode ? mAmbientPaints : mNormalPaints);
             mSecondsRenderer.setPaints(ambientMode ? mAmbientPaints : mNormalPaints);
+
+            mHourMinRenderer.updateTime();
+
+            if (mShowSeconds) {
+                mSecondsRenderer.updateTime();
+            }
 
             if (ambientMode) {
                 drawClock(canvas);
@@ -500,8 +463,18 @@ public class FormWatchFace extends CanvasWatchFaceService {
             }
 
             if ((isVisible() && !ambientMode) || mBottomBoundAnimator.isRunning()) {
-                // TODO: avoid always drawing if seconds aren't shown
-                postInvalidate();
+                float secondsOpacity = (Float) mSecondsAlphaAnimator.getAnimatedValue();
+                boolean showingSeconds = mShowSeconds && secondsOpacity > 0;
+                long timeToNextSecondsAnimation = showingSeconds
+                        ? mSecondsRenderer.timeToNextAnimation()
+                        : 10000;
+                long timeToNextHourMinAnimation = mHourMinRenderer.timeToNextAnimation();
+                if (timeToNextHourMinAnimation < 0 || timeToNextSecondsAnimation < 0) {
+                    postInvalidate();
+                } else {
+                    mInvalidateHandler.sendEmptyMessageDelayed(0,
+                            Math.min(timeToNextHourMinAnimation, timeToNextSecondsAnimation));
+                }
             }
         }
 
@@ -531,6 +504,7 @@ public class FormWatchFace extends CanvasWatchFaceService {
 
         private void drawClock(Canvas canvas) {
             boolean ambientMode = isInAmbientMode();
+            boolean offscreenGlyphs = !ambientMode;
 
             if (ambientMode) {
                 canvas.drawRect(0, 0, mWidth, mHeight, mAmbientBackgroundPaint);
@@ -547,14 +521,13 @@ public class FormWatchFace extends CanvasWatchFaceService {
             float bottom = (Float) mBottomBoundAnimator.getAnimatedValue();
 
             PointF hourMinSize = mHourMinRenderer.measure();
-            mHourMinRenderer.draw(canvas, (mWidth - hourMinSize.x) / 2, (bottom - hourMinSize.y) / 2,
-                    !ambientMode);
+            mHourMinRenderer.draw(canvas,
+                    (mWidth - hourMinSize.x) / 2, (bottom - hourMinSize.y) / 2,
+                    offscreenGlyphs);
 
             float clockSecondsSpacing = getResources().getDimension(R.dimen.clock_seconds_spacing);
             float secondsOpacity = (Float) mSecondsAlphaAnimator.getAnimatedValue();
             if (mShowSeconds && !ambientMode && secondsOpacity > 0) {
-                mSecondsRenderer.setAnimTime(System.currentTimeMillis() - mSecondsStartAnimTimeMillis);
-
                 PointF secondsSize = mSecondsRenderer.measure();
                 int sc = -1;
                 if (secondsOpacity != 1) {
@@ -564,7 +537,7 @@ public class FormWatchFace extends CanvasWatchFaceService {
                 mSecondsRenderer.draw(canvas,
                         (mWidth + hourMinSize.x) / 2 - secondsSize.x,
                         (bottom + hourMinSize.y) / 2 + clockSecondsSpacing,
-                        !ambientMode);
+                        offscreenGlyphs);
                 if (sc >= 0) {
                     canvas.restoreToCount(sc);
                 }
@@ -584,17 +557,11 @@ public class FormWatchFace extends CanvasWatchFaceService {
             }
         }
 
-        private TimeInfo getCurrentTimeInfo() {
-            Calendar now = Calendar.getInstance();
-            if (DEBUG_BASE_TIME_MILLIS != 0) {
-                long v = DEBUG_BASE_TIME_MILLIS + (System.currentTimeMillis() - BOOT_TIME_MILLIS);
-                now.setTimeInMillis(v);
+        private Handler mInvalidateHandler = new Handler() {
+            @Override
+            public void handleMessage(Message msg) {
+                postInvalidate();
             }
-            int h = now.get(Calendar.HOUR);
-            return new TimeInfo(
-                    h == 0 ? 12 : h,
-                    now.get(Calendar.MINUTE),
-                    now.get(Calendar.SECOND));
-        }
+        };
     }
 }
