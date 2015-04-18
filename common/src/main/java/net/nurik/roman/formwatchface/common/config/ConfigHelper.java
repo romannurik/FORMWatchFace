@@ -112,8 +112,9 @@ public class ConfigHelper {
         }
 
         DataMap currentDataMap = readConfigDataMapFromDataLayer();
+        boolean dirty = true;
         if (currentDataMap != null) {
-            boolean dirty = false;
+            dirty = false;
             for (String key : newDataMap.keySet()) {
                 Object newValue = newDataMap.get(key);
                 if (newValue != null && !newValue.equals(currentDataMap.get(key))) {
@@ -121,11 +122,12 @@ public class ConfigHelper {
                     break;
                 }
             }
-
-            if (dirty) {
-                putConfigDataMapToDataLayer(newDataMap);
-            }
         }
+
+        if (dirty) {
+            putConfigDataMapToDataLayer(newDataMap);
+        }
+
         disconnect();
     }
 

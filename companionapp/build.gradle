@@ -19,7 +19,7 @@ apply plugin: 'com.android.application'
 project.archivesBaseName = "formwatchface"
 
 android {
-    compileSdkVersion 21
+    compileSdkVersion 22
     buildToolsVersion "21.1.2"
 
     def Properties versionProps = new Properties()

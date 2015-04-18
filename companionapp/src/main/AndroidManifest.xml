@@ -31,10 +31,10 @@
             android:name=".CompanionWatchFaceConfigActivity"
             android:label="@string/config_label"
             android:theme="@style/AppTheme">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
+            <!--<intent-filter>-->
+                <!--<action android:name="android.intent.action.MAIN" />-->
+                <!--<category android:name="android.intent.category.LAUNCHER" />-->
+            <!--</intent-filter>-->
             <intent-filter>
                 <action android:name="net.nurik.roman.formwatchface.CONFIG_WATCHFACE" />
                 <category android:name="com.google.android.wearable.watchface.category.COMPANION_CONFIGURATION" />

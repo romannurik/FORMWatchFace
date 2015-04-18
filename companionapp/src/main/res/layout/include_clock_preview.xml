@@ -31,6 +31,5 @@
         android:layout_width="300dp"
         android:layout_height="120dp"
         android:layout_gravity="center"
-        android:layerType="hardware"
         app:textSize="50sp" />
 </FrameLayout>
