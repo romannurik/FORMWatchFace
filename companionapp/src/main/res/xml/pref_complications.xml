@@ -18,18 +18,18 @@
 
     <CheckBoxPreference
         android:key="pref_show_notification_count"
-        android:title="Notification count"
+        android:title="@string/pref_show_notification_count_title"
         android:defaultValue="false" />
 
     <CheckBoxPreference
         android:key="pref_show_date"
-        android:title="Date"
+        android:title="@string/pref_show_date_title"
         android:defaultValue="false" />
 
     <CheckBoxPreference
         android:key="pref_show_seconds"
-        android:title="Seconds"
-        android:summary="May harm battery life; only shown when no cards are visible"
+        android:title="@string/pref_show_seconds_title"
+        android:summary="@string/pref_show_seconds_desc"
         android:defaultValue="false" />
 
 </PreferenceScreen>

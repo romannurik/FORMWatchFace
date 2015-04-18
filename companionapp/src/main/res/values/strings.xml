@@ -22,4 +22,9 @@
     <string name="title_complications">Complications</string>
     <string name="done">Done</string>
 
+    <string name="pref_show_notification_count_title">Unread count</string>
+    <string name="pref_show_date_title">Date</string>
+    <string name="pref_show_seconds_title">Seconds</string>
+    <string name="pref_show_seconds_desc">May harm battery life; only shown when no cards are visible</string>
+
 </resources>

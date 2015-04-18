@@ -25,6 +25,5 @@
     <integer name="seconds_clock_glyph_anim_delay">0</integer>
     <integer name="seconds_clock_glyph_anim_duration">750</integer>
 
-    <dimen name="seconds_height">15dp</dimen>
     <dimen name="clock_seconds_spacing">5dp</dimen>
 </resources>

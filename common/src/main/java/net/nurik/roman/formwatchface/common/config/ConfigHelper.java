@@ -17,7 +17,6 @@
 package net.nurik.roman.formwatchface.common.config;
 
 import android.content.Context;
-import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Build;
 import android.preference.PreferenceManager;
@@ -31,6 +30,7 @@ import com.google.android.gms.wearable.DataItem;
 import com.google.android.gms.wearable.DataItemBuffer;
 import com.google.android.gms.wearable.DataMap;
 import com.google.android.gms.wearable.DataMapItem;
+import com.google.android.gms.wearable.NodeApi;
 import com.google.android.gms.wearable.PutDataMapRequest;
 import com.google.android.gms.wearable.Wearable;
 
@@ -66,7 +66,11 @@ public class ConfigHelper {
         mContext = context;
     }
 
-    private boolean connect() {
+    public boolean connect() {
+        if (mGoogleApiClient != null) {
+            return true;
+        }
+
         if (ConnectionResult.SUCCESS != GooglePlayServicesUtil.isGooglePlayServicesAvailable(mContext)
                 || Build.VERSION.SDK_INT <= Build.VERSION_CODES.JELLY_BEAN_MR1) {
             return false;
@@ -85,64 +89,95 @@ public class ConfigHelper {
         return true;
     }
 
-    private void disconnect() {
+    public String getLocalNodeId() {
+        NodeApi.GetLocalNodeResult localNodeResult = Wearable.NodeApi.getLocalNode(mGoogleApiClient).await();
+        if (!localNodeResult.getStatus().isSuccess()) {
+            Log.e(TAG, "Error getting local node info: " + localNodeResult.getStatus().getStatusMessage());
+        }
+
+        return localNodeResult.getNode().getId();
+    }
+
+    public void disconnect() {
         if (mGoogleApiClient != null && mGoogleApiClient.isConnected()) {
             mGoogleApiClient.disconnect();
             mGoogleApiClient = null;
         }
     }
 
-    public void blockingPutConfig() {
-        if (connect()) {
-            DataMap dataMap = readConfigDataMapFromSharedPrefs();
-            PutDataMapRequest dataMapRequest = PutDataMapRequest.create("/config");
-            dataMapRequest.getDataMap().putDataMap("config", dataMap);
-
-            // NOTE: Need to use timestamps because there's a separate data item for the companion
-            // and the wearable
-            // TODO: find a better way to get cross-device timestamps
-            dataMapRequest.getDataMap().putLong("timestamp", Calendar.getInstance().getTimeInMillis());
-            Wearable.DataApi.putDataItem(mGoogleApiClient, dataMapRequest.asPutDataRequest()).await();
-            disconnect();
+    public void putConfigSharedPrefsToDataLayer() {
+        DataMap newDataMap = readConfigDataMapFromSharedPrefs();
+        if (newDataMap == null) {
+            return;
         }
+
+        DataMap currentDataMap = readConfigDataMapFromDataLayer();
+        if (currentDataMap != null) {
+            boolean dirty = false;
+            for (String key : newDataMap.keySet()) {
+                Object newValue = newDataMap.get(key);
+                if (newValue != null && !newValue.equals(currentDataMap.get(key))) {
+                    dirty = true;
+                    break;
+                }
+            }
+
+            if (dirty) {
+                putConfigDataMapToDataLayer(newDataMap);
+            }
+        }
+        disconnect();
     }
 
-    public void blockingReadConfig() {
-        long latestTimestamp = 0;
-        if (connect()) {
-            // Read all DataItems
-            DataItemBuffer dataItemBuffer = Wearable.DataApi.getDataItems(mGoogleApiClient).await();
-            if (!dataItemBuffer.getStatus().isSuccess()) {
-                Log.e(TAG, "Error getting all data items: " + dataItemBuffer.getStatus().getStatusMessage());
-            }
-
-            DataMap configDataMap = null;
-
-            Iterator<DataItem> dataItemIterator = dataItemBuffer.singleRefIterator();
-            while (dataItemIterator.hasNext()) {
-                DataItem dataItem = dataItemIterator.next();
-                if (!dataItem.getUri().getPath().equals("/config")) {
-                    Log.w(TAG, "Ignoring data item " + dataItem.getUri().getPath());
-                    continue;
-                }
-
-                DataMapItem dataMapItem = DataMapItem.fromDataItem(dataItem);
-                DataMap dataMap = dataMapItem.getDataMap();
-                long timestamp = dataMap.getLong("timestamp");
-                if (timestamp >= latestTimestamp) {
-                    configDataMap = dataMapItem.getDataMap().getDataMap("config");
-                    latestTimestamp = timestamp;
-                }
-            }
-
-            if (configDataMap != null) {
-                putConfigDataMapToSharedPrefs(configDataMap);
-            }
-
-            dataItemBuffer.close();
-
-            disconnect();
+    public void readConfigSharedPrefsFromDataLayer() {
+        // Read all DataItems
+        DataMap configDataMap = readConfigDataMapFromDataLayer();
+        if (configDataMap != null) {
+            putConfigDataMapToSharedPrefs(configDataMap);
         }
+
+        disconnect();
+    }
+
+    private void putConfigDataMapToDataLayer(DataMap configDataMap) {
+        PutDataMapRequest dataMapRequest = PutDataMapRequest.create("/config");
+        dataMapRequest.getDataMap().putDataMap("config", configDataMap);
+
+        // NOTE: Need to use timestamps because there's a separate data item for the companion
+        // and the wearable
+        // TODO: find a better way to get cross-device timestamps
+        dataMapRequest.getDataMap().putLong("timestamp", Calendar.getInstance().getTimeInMillis());
+        Wearable.DataApi.putDataItem(mGoogleApiClient, dataMapRequest.asPutDataRequest()).await();
+    }
+
+    // Assumes connect() has been called
+    private DataMap readConfigDataMapFromDataLayer() {
+        long latestTimestamp = 0;
+        DataItemBuffer dataItemBuffer = Wearable.DataApi.getDataItems(mGoogleApiClient).await();
+        if (!dataItemBuffer.getStatus().isSuccess()) {
+            Log.e(TAG, "Error getting all data items: " + dataItemBuffer.getStatus().getStatusMessage());
+        }
+
+        DataMap configDataMap = null;
+
+        Iterator<DataItem> dataItemIterator = dataItemBuffer.singleRefIterator();
+        while (dataItemIterator.hasNext()) {
+            DataItem dataItem = dataItemIterator.next();
+            if (!dataItem.getUri().getPath().equals("/config")) {
+                continue;
+            }
+
+            DataMapItem dataMapItem = DataMapItem.fromDataItem(dataItem);
+            DataMap dataMap = dataMapItem.getDataMap();
+            long timestamp = dataMap.getLong("timestamp");
+            if (timestamp >= latestTimestamp) {
+                configDataMap = dataMapItem.getDataMap().getDataMap("config");
+                latestTimestamp = timestamp;
+            }
+        }
+
+        dataItemBuffer.release();
+        return configDataMap;
     }
 
     public static boolean isConfigPrefKey(String key) {

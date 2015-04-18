@@ -17,107 +17,147 @@
 package net.nurik.roman.formwatchface;
 
 import android.app.Activity;
+import android.app.Fragment;
 import android.content.SharedPreferences;
-import android.graphics.drawable.GradientDrawable;
+import android.graphics.Rect;
 import android.os.Bundle;
+import android.os.PersistableBundle;
+import android.preference.PreferenceFragment;
 import android.preference.PreferenceManager;
-import android.support.wearable.view.WearableListView;
-import android.view.LayoutInflater;
+import android.support.wearable.view.DotsPageIndicator;
+import android.support.wearable.view.FragmentGridPagerAdapter;
+import android.support.wearable.view.GridViewPager;
 import android.view.View;
-import android.view.ViewGroup;
-import android.widget.ImageView;
+import android.view.ViewTreeObserver;
+import android.view.WindowInsets;
 
-import net.nurik.roman.formwatchface.common.MuzeiArtworkImageLoader;
 import net.nurik.roman.formwatchface.common.config.ConfigHelper;
 import net.nurik.roman.formwatchface.common.config.Themes;
 import net.nurik.roman.formwatchface.common.config.UpdateConfigIntentService;
 
 public class WearableWatchFaceConfigActivity extends Activity {
+    private GridViewPager mGridViewPager;
+    private DotsPageIndicator mPagerIndicator;
+    private View mContainerView;
+
+    private static float ROUND_FACTOR = 0.146467f; //(1 - sqrt(2)/2)/2 (from BoxInsetLayout)
+
+    private Rect mInsetsRect = new Rect();
+    private boolean mIsRound;
+
     private SharedPreferences mSharedPreferences;
+    private ConfigComplicationsFragment mConfigComplicationsFragment;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.watch_face_config_activity);
+        setContentView(R.layout.config_watch_face_activity);
 
-        mSharedPreferences = PreferenceManager.getDefaultSharedPreferences(
-                WearableWatchFaceConfigActivity.this);
+        mSharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
+        registerSharedPrefsListener();
 
-        WearableListView listView = (WearableListView) findViewById(R.id.wearable_list);
-
-        final boolean hasMuzeiArtwork = MuzeiArtworkImageLoader.hasMuzeiArtwork(this);
-
-        listView.setAdapter(new WearableListView.Adapter() {
-            private static final int TYPE_NORMAL = 1;
-            private static final int TYPE_MUZEI = 2;
-
+        mGridViewPager = (GridViewPager) findViewById(R.id.pager);
+        mGridViewPager.setAdapter(new FragmentGridPagerAdapter(getFragmentManager()) {
             @Override
-            public WearableListView.ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
-                return new ItemViewHolder(LayoutInflater.from(WearableWatchFaceConfigActivity.this)
-                        .inflate(R.layout.watch_face_config_color_item, parent, false));
-            }
-
-            @Override
-            public int getItemViewType(int position) {
-                return (position >= Themes.THEMES.length) ? TYPE_MUZEI : TYPE_NORMAL;
-            }
-
-            @Override
-            public void onBindViewHolder(WearableListView.ViewHolder holder, int position) {
-                ItemViewHolder itemHolder = (ItemViewHolder) holder;
-                Themes.Theme theme;
-                if (getItemViewType(position) == TYPE_MUZEI) {
-                    theme = Themes.MUZEI_THEME;
-                    itemHolder.circleView.setImageResource(R.drawable.muzei_icon);
-                } else {
-                    theme = Themes.THEMES[position];
-                    ((GradientDrawable) itemHolder.circleView.getDrawable()).setColor(
-                            getResources().getColor(theme.darkRes));
+            public Fragment getFragment(int row, int column) {
+                switch (column) {
+                    case 0:
+                        return new ConfigThemeFragment();
+                    case 1:
+                        mConfigComplicationsFragment = new ConfigComplicationsFragment();
+                        return mConfigComplicationsFragment;
                 }
-                holder.itemView.setTag(theme.id);
+
+                return null;
             }
 
             @Override
-            public int getItemCount() {
-                return Themes.THEMES.length + (hasMuzeiArtwork ? 1 : 0);
+            public int getRowCount() {
+                return 1;
+            }
+
+            @Override
+            public int getColumnCount(int row) {
+                return 2;
             }
         });
 
-        listView.setClickListener(new WearableListView.ClickListener() {
-            @Override
-            public void onClick(WearableListView.ViewHolder viewHolder) {
-                String theme = viewHolder.itemView.getTag().toString();
-                mSharedPreferences.edit().putString(ConfigHelper.KEY_THEME, theme).apply();
-                UpdateConfigIntentService.startConfigChangeService(
-                        WearableWatchFaceConfigActivity.this);
-                finish();
-            }
+        mPagerIndicator = (DotsPageIndicator) findViewById(R.id.pager_indicator);
+        mPagerIndicator.setPager(mGridViewPager);
 
+        mContainerView = findViewById(R.id.container);
+        mContainerView.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
             @Override
-            public void onTopEmptyRegionClick() {
+            public WindowInsets onApplyWindowInsets(View v, WindowInsets insets) {
+                mIsRound = insets.isRound();
+                mInsetsRect.set(
+                        insets.getSystemWindowInsetLeft(),
+                        insets.getSystemWindowInsetTop(),
+                        insets.getSystemWindowInsetRight(),
+                        insets.getSystemWindowInsetBottom());
+
+                mPagerIndicator.setTranslationY(-mInsetsRect.bottom);
+
+                if (mIsRound) {
+                    mInsetsRect.left = Math.max((int) (v.getWidth() * ROUND_FACTOR), mInsetsRect.left);
+                    mInsetsRect.right = Math.max((int) (v.getWidth() * ROUND_FACTOR), mInsetsRect.right);
+                    mInsetsRect.top = Math.max((int) (v.getWidth() * ROUND_FACTOR), mInsetsRect.top);
+                    mInsetsRect.bottom = Math.max((int) (v.getWidth() * ROUND_FACTOR), mInsetsRect.bottom);
+                }
+
+                return mContainerView.onApplyWindowInsets(insets);
             }
         });
 
-        int startingIndex = 0;
-        String theme = mSharedPreferences.getString(ConfigHelper.KEY_THEME, null);
-        if (theme != null) {
-            for (int i = 0; i < Themes.THEMES.length; i++) {
-                if (Themes.THEMES[i].id.equals(theme)) {
-                    startingIndex = i;
-                    break;
-                }
+        ViewTreeObserver vto = mContainerView.getViewTreeObserver();
+        vto.addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
+            @Override
+            public void onGlobalLayout() {
+                mContainerView.requestApplyInsets();
             }
-        }
-
-        listView.scrollToPosition(startingIndex);
+        });
     }
 
-    public static class ItemViewHolder extends WearableListView.ViewHolder {
-        private ImageView circleView;
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        unregisterSharedPrefsListener();
+    }
 
-        public ItemViewHolder(View itemView) {
-            super(itemView);
-            circleView = (ImageView) itemView.findViewById(R.id.circle);
+    private void registerSharedPrefsListener() {
+        mSharedPreferences.registerOnSharedPreferenceChangeListener(mOnSharedPreferenceChangeListener);
+    }
+
+    private void unregisterSharedPrefsListener() {
+        mSharedPreferences.unregisterOnSharedPreferenceChangeListener(mOnSharedPreferenceChangeListener);
+    }
+
+    private SharedPreferences.OnSharedPreferenceChangeListener mOnSharedPreferenceChangeListener
+            = new SharedPreferences.OnSharedPreferenceChangeListener() {
+        @Override
+        public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
+            if (ConfigHelper.isConfigPrefKey(key)) {
+                UpdateConfigIntentService.startConfigChangeService(
+                        WearableWatchFaceConfigActivity.this);
+
+                if (mConfigComplicationsFragment != null) {
+                    mConfigComplicationsFragment.update();
+                }
+            }
         }
+    };
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+//        if (isFinishing()) {
+//            UpdateConfigIntentService.startConfigChangeService(this);
+//        }
+    }
+
+    @Override
+    public void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        mContainerView.requestApplyInsets();
     }
 }

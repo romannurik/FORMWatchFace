@@ -27,7 +27,7 @@ android {
     defaultConfig {
         applicationId "net.nurik.roman.formwatchface"
         minSdkVersion 20
-        targetSdkVersion 21
+        targetSdkVersion 22
         versionCode 1
         versionName "1.0"
     }
@@ -65,6 +65,6 @@ android {
 dependencies {
     compile fileTree(dir: 'libs', include: ['*.jar'])
     compile 'com.google.android.support:wearable:1.1.0'
-    compile 'com.google.android.gms:play-services-wearable:6.5.87'
+    compile 'com.google.android.gms:play-services-wearable:7.0.0'
     compile project(':common')
 }

@@ -28,7 +28,7 @@ android {
     defaultConfig {
         applicationId "net.nurik.roman.formwatchface"
         minSdkVersion 18
-        targetSdkVersion 21
+        targetSdkVersion 22
 
         versionName versionProps['name']
         versionCode versionProps['code'].toInteger()

@@ -29,6 +29,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.LayerDrawable;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
 import android.preference.PreferenceManager;
 import android.support.v4.view.ViewPager;
 import android.support.v7.app.ActionBarActivity;
@@ -69,11 +70,13 @@ public class CompanionWatchFaceConfigActivity extends ActionBarActivity
     private ArrayList<ThemeUiHolder> mThemeUiHolders = new ArrayList<>();
     private ThemeUiHolder mMuzeiThemeUiHolder;
 
+    private ConfigComplicationsFragment mConfigComplicationsFragment;
     private ViewGroup mMainClockContainerView;
     private FormClockView mMainClockView;
     private ViewGroup mAnimateClockContainerView;
     private FormClockView mAnimateClockView;
     private Animator mCurrentRevealAnimator;
+    private Theme mAnimatingTheme;
 
     private LoadedArtwork mMuzeiLoadedArtwork;
 
@@ -121,10 +124,13 @@ public class CompanionWatchFaceConfigActivity extends ActionBarActivity
         registerSharedPrefsListener();
 
         // Set up complications config fragment
-        if (savedInstanceState == null) {
+        mConfigComplicationsFragment = (ConfigComplicationsFragment) getFragmentManager()
+                .findFragmentById(R.id.config_complications_container);
+        if (mConfigComplicationsFragment == null) {
+            mConfigComplicationsFragment = new ConfigComplicationsFragment();
             getFragmentManager()
                     .beginTransaction()
-                    .add(R.id.config_complications_container, new ConfigComplicationsFragment())
+                    .add(R.id.config_complications_container, mConfigComplicationsFragment)
                     .commit();
         }
 
@@ -179,6 +185,10 @@ public class CompanionWatchFaceConfigActivity extends ActionBarActivity
             if (ConfigHelper.isConfigPrefKey(key)) {
                 UpdateConfigIntentService.startConfigChangeService(
                         CompanionWatchFaceConfigActivity.this);
+
+                if (mConfigComplicationsFragment != null) {
+                    mConfigComplicationsFragment.update();
+                }
 
                 if (ConfigHelper.KEY_THEME.equals(key)) {
                     String themeId = mSharedPreferences
@@ -254,7 +264,6 @@ public class CompanionWatchFaceConfigActivity extends ActionBarActivity
     }
 
     private void updateAndPersistTheme(Theme theme) {
-        updateUIToSelectedTheme(theme.id, true);
         mSharedPreferences.edit().putString(ConfigHelper.KEY_THEME, theme.id).apply();
     }
 
@@ -277,7 +286,7 @@ public class CompanionWatchFaceConfigActivity extends ActionBarActivity
     }
 
     @TargetApi(Build.VERSION_CODES.LOLLIPOP)
-    private void updateUIToSelectedTheme(String themeId, boolean animate) {
+    private void updateUIToSelectedTheme(final String themeId, final boolean animate) {
         for (final ThemeUiHolder holder : mThemeUiHolders) {
             boolean selected = holder.theme.id.equals(themeId);
 
@@ -285,11 +294,13 @@ public class CompanionWatchFaceConfigActivity extends ActionBarActivity
 
             if (holder.selected != selected && selected) {
                 if (mCurrentRevealAnimator != null) {
-                    mCurrentRevealAnimator.cancel();
+                    mCurrentRevealAnimator.end();
+                    updatePreviewView(mAnimatingTheme, mMainClockContainerView, mMainClockView);
                 }
 
                 if (animate && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    updatePreviewView(holder.theme, mAnimateClockContainerView, mAnimateClockView);
+                    mAnimatingTheme = holder.theme;
+                    updatePreviewView(mAnimatingTheme, mAnimateClockContainerView, mAnimateClockView);
 
                     Rect buttonRect = new Rect();
                     Rect clockContainerRect = new Rect();
@@ -307,14 +318,11 @@ public class CompanionWatchFaceConfigActivity extends ActionBarActivity
                     mCurrentRevealAnimator.setDuration(300);
                     mCurrentRevealAnimator.addListener(new AnimatorListenerAdapter() {
                         @Override
-                        public void onAnimationCancel(Animator animation) {
-                            onAnimationEnd(animation);
-                        }
-
-                        @Override
                         public void onAnimationEnd(Animator animation) {
-                            mAnimateClockContainerView.setVisibility(View.INVISIBLE);
-                            updatePreviewView(holder.theme, mMainClockContainerView, mMainClockView);
+                            if (mCurrentRevealAnimator == animation) {
+                                mAnimateClockContainerView.setVisibility(View.INVISIBLE);
+                                updatePreviewView(holder.theme, mMainClockContainerView, mMainClockView);
+                            }
                         }
                     });
 

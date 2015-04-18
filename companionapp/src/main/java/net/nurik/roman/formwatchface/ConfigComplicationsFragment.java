@@ -16,7 +16,6 @@
 
 package net.nurik.roman.formwatchface;
 
-import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.preference.PreferenceFragment;
 import android.view.LayoutInflater;
@@ -31,6 +30,11 @@ public class ConfigComplicationsFragment extends PreferenceFragment {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        addPreferencesFromResource(R.xml.pref_complications);
+    }
+
+    public void update() {
+        setPreferenceScreen(null);
         addPreferencesFromResource(R.xml.pref_complications);
     }
 

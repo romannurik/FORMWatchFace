@@ -109,6 +109,7 @@ public class FormClockView extends View {
 
         mHourMinRenderer.setPaints(paints);
         mSecondsRenderer.setPaints(paints);
+        postInvalidate();
     }
 
     @Override
