@@ -32,7 +32,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.preference.PreferenceManager;
 import android.support.v4.view.ViewPager;
-import android.support.v7.app.ActionBarActivity;
+import android.support.v7.app.AppCompatActivity;
 import android.util.TypedValue;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -57,7 +57,7 @@ import static net.nurik.roman.formwatchface.common.MuzeiArtworkImageLoader.Loade
 import static net.nurik.roman.formwatchface.common.config.Themes.MUZEI_THEME;
 import static net.nurik.roman.formwatchface.common.config.Themes.Theme;
 
-public class CompanionWatchFaceConfigActivity extends ActionBarActivity
+public class CompanionWatchFaceConfigActivity extends AppCompatActivity
         implements LoaderManager.LoaderCallbacks<LoadedArtwork> {
 
     private static final String TAG = "CompanionWatchFaceConfigActivity";

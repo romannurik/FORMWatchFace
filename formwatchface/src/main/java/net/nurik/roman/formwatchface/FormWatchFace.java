@@ -58,7 +58,7 @@ import java.util.Calendar;
 
 import static net.nurik.roman.formwatchface.LogUtil.LOGD;
 import static net.nurik.roman.formwatchface.common.FormClockRenderer.ClockPaints;
-import static net.nurik.roman.formwatchface.common.MathUtil.decelerate2;
+import static net.nurik.roman.formwatchface.common.MathUtil.decelerate3;
 import static net.nurik.roman.formwatchface.common.MathUtil.interpolate;
 import static net.nurik.roman.formwatchface.common.MuzeiArtworkImageLoader.LoadedArtwork;
 import static net.nurik.roman.formwatchface.common.config.Themes.MUZEI_THEME;
@@ -68,7 +68,7 @@ import static net.nurik.roman.formwatchface.common.config.Themes.Theme;
 public class FormWatchFace extends CanvasWatchFaceService {
     private static final String TAG = "FormClockWatchFace";
 
-    private static final int UPDATE_THEME_ANIM_DURATION = 2000;
+    private static final int UPDATE_THEME_ANIM_DURATION = 1000;
 
     @Override
     public Engine onCreateEngine() {
@@ -178,14 +178,19 @@ public class FormWatchFace extends CanvasWatchFaceService {
         private void handleConfigUpdated() {
             SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(FormWatchFace.this);
             String themeId = sp.getString(ConfigHelper.KEY_THEME, Themes.DEFAULT_THEME.id);
-            mAnimateFromTheme = mCurrentTheme;
-            mCurrentTheme = Themes.getThemeById(themeId);
+            Theme newCurrentTheme = Themes.getThemeById(themeId);
+            if (newCurrentTheme != mCurrentTheme) {
+                mAnimateFromTheme = mCurrentTheme;
+                mCurrentTheme = newCurrentTheme;
+                mUpdateThemeStartAnimTimeMillis = System.currentTimeMillis() + 200;
+            }
 
             mShowNotificationCount = sp.getBoolean(ConfigHelper.KEY_SHOW_NOTIFICATION_COUNT, false);
             mShowSeconds = sp.getBoolean(ConfigHelper.KEY_SHOW_SECONDS, false);
             mShowDate = sp.getBoolean(ConfigHelper.KEY_SHOW_DATE, false);
 
             updateWatchFaceStyle();
+            postInvalidate();
         }
 
         private void updateWatchFaceStyle() {
@@ -296,7 +301,6 @@ public class FormWatchFace extends CanvasWatchFaceService {
             @Override
             public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
                 if (ConfigHelper.isConfigPrefKey(key)) {
-                    mUpdateThemeStartAnimTimeMillis = System.currentTimeMillis();
                     handleConfigUpdated();
                 }
             }
@@ -325,6 +329,10 @@ public class FormWatchFace extends CanvasWatchFaceService {
 
                 paint = new Paint();
                 paint.setAntiAlias(!mLowBitAmbient);
+
+                mAmbientPaints.date = new Paint(paint);
+                mAmbientPaints.date.setColor(Color.WHITE);
+
                 paint.setStyle(Paint.Style.STROKE);
                 paint.setStrokeWidth(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 5,
                         getResources().getDisplayMetrics()));
@@ -332,9 +340,6 @@ public class FormWatchFace extends CanvasWatchFaceService {
                 mAmbientPaints.strokes[0] = mAmbientPaints.strokes[1] = mAmbientPaints.strokes[2]
                         = paint;
                 mAmbientPaints.hasStroke = true;
-
-                mAmbientPaints.date = new Paint(paint);
-                mAmbientPaints.date.setColor(Color.WHITE);
 
             } else {
                 paint.setAntiAlias(true);
@@ -432,7 +437,7 @@ public class FormWatchFace extends CanvasWatchFaceService {
                 drawClock(canvas);
             } else {
                 int sc = -1;
-                if (currentTimeMillis - mUpdateThemeStartAnimTimeMillis < UPDATE_THEME_ANIM_DURATION && mAnimateFromTheme != null) {
+                if (isAnimatingThemeChange()) {
                     // show a reveal animation
                     updatePaintsForTheme(mAnimateFromTheme);
                     drawClock(canvas);
@@ -444,10 +449,10 @@ public class FormWatchFace extends CanvasWatchFaceService {
                     float bottom = (Float) mBottomBoundAnimator.getAnimatedValue();
                     float cy = bottom / 2;
                     float maxRadius = MathUtil.maxDistanceToCorner(0, 0, mWidth, mHeight, cx, cy);
-                    float radius = decelerate2(interpolate(
-                            (currentTimeMillis - mUpdateThemeStartAnimTimeMillis)
-                                    * 1f / UPDATE_THEME_ANIM_DURATION,
-                            0, maxRadius));
+                    float radius = interpolate(decelerate3(
+                                    (currentTimeMillis - mUpdateThemeStartAnimTimeMillis)
+                                            * 1f / UPDATE_THEME_ANIM_DURATION),
+                            0 , maxRadius);
 
                     mTempRectF.set(cx - radius, cy - radius, cx + radius, cy + radius);
                     mUpdateThemeClipPath.addOval(mTempRectF, Path.Direction.CW);
@@ -462,7 +467,9 @@ public class FormWatchFace extends CanvasWatchFaceService {
                 }
             }
 
-            if ((isVisible() && !ambientMode) || mBottomBoundAnimator.isRunning()) {
+            if (mBottomBoundAnimator.isRunning() || isAnimatingThemeChange()) {
+                postInvalidate();
+            } else if (isVisible() && !ambientMode) {
                 float secondsOpacity = (Float) mSecondsAlphaAnimator.getAnimatedValue();
                 boolean showingSeconds = mShowSeconds && secondsOpacity > 0;
                 long timeToNextSecondsAnimation = showingSeconds
@@ -476,6 +483,12 @@ public class FormWatchFace extends CanvasWatchFaceService {
                             Math.min(timeToNextHourMinAnimation, timeToNextSecondsAnimation));
                 }
             }
+        }
+
+        private boolean isAnimatingThemeChange() {
+            return mAnimateFromTheme != null
+                    && System.currentTimeMillis() - mUpdateThemeStartAnimTimeMillis
+                    < UPDATE_THEME_ANIM_DURATION;
         }
 
         private void updateDateStr() {
