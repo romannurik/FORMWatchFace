@@ -24,6 +24,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.Loader;
 import android.content.SharedPreferences;
+import android.database.ContentObserver;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -37,6 +38,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
 import android.preference.PreferenceManager;
+import android.provider.Settings;
 import android.support.wearable.watchface.CanvasWatchFaceService;
 import android.support.wearable.watchface.WatchFaceService;
 import android.support.wearable.watchface.WatchFaceStyle;
@@ -58,6 +60,7 @@ import java.util.Calendar;
 
 import static net.nurik.roman.formwatchface.LogUtil.LOGD;
 import static net.nurik.roman.formwatchface.common.FormClockRenderer.ClockPaints;
+import static net.nurik.roman.formwatchface.common.MathUtil.constrain;
 import static net.nurik.roman.formwatchface.common.MathUtil.decelerate3;
 import static net.nurik.roman.formwatchface.common.MathUtil.interpolate;
 import static net.nurik.roman.formwatchface.common.MuzeiArtworkImageLoader.LoadedArtwork;
@@ -66,7 +69,7 @@ import static net.nurik.roman.formwatchface.common.config.Themes.Theme;
 
 @TargetApi(Build.VERSION_CODES.LOLLIPOP)
 public class FormWatchFace extends CanvasWatchFaceService {
-    private static final String TAG = "FormClockWatchFace";
+    private static final String TAG = "FormWatchFace";
 
     private static final int UPDATE_THEME_ANIM_DURATION = 1000;
 
@@ -85,6 +88,8 @@ public class FormWatchFace extends CanvasWatchFaceService {
         private ValueAnimator mSecondsAlphaAnimator = new ValueAnimator();
         private int mWidth = 0;
         private int mHeight = 0;
+
+        private Handler mMainThreadHandler = new Handler();
 
         // For Muzei
         private WatchfaceArtworkImageLoader mMuzeiLoader;
@@ -127,16 +132,16 @@ public class FormWatchFace extends CanvasWatchFaceService {
             mMute = getInterruptionFilter() == WatchFaceService.INTERRUPTION_FILTER_NONE;
             handleConfigUpdated();
 
+            mDateTypeface = Typeface.createFromAsset(getAssets(), "VT323-Regular.ttf");
             initClockRenderers();
 
+            registerSystemSettingsListener();
             registerSharedPrefsListener();
 
             initMuzei();
         }
 
         private void initClockRenderers() {
-            mDateTypeface = Typeface.createFromAsset(getAssets(), "VT323-Regular.ttf");
-
             // Init paints
             mAmbientBackgroundPaint = new Paint();
             mAmbientBackgroundPaint.setColor(Color.BLACK);
@@ -158,6 +163,7 @@ public class FormWatchFace extends CanvasWatchFaceService {
             // General config
             FormClockRenderer.Options options = new FormClockRenderer.Options();
 
+            options.is24hour = DateFormat.is24HourFormat(FormWatchFace.this);
             options.textSize = getResources().getDimensionPixelSize(R.dimen.main_clock_height);
             options.charSpacing = getResources().getDimensionPixelSize(R.dimen.main_clock_spacing);
             options.glyphAnimAverageDelay = getResources().getInteger(R.integer.main_clock_glyph_anim_delay);
@@ -241,6 +247,7 @@ public class FormWatchFace extends CanvasWatchFaceService {
         @Override
         public void onDestroy() {
             super.onDestroy();
+            unregisterSystemSettingsListener();
             unregisterSharedPrefsListener();
             destroyMuzei();
         }
@@ -283,6 +290,25 @@ public class FormWatchFace extends CanvasWatchFaceService {
                     mMuzeiLoadedArtwork = null;
                 }
                 postInvalidate();
+            }
+        };
+
+        private void registerSystemSettingsListener() {
+            getContentResolver().registerContentObserver(
+                    Settings.System.getUriFor(Settings.System.TIME_12_24),
+                    false, mSystemSettingsObserver);
+        }
+
+        private void unregisterSystemSettingsListener() {
+            getContentResolver().unregisterContentObserver(mSystemSettingsObserver);
+        }
+
+        private ContentObserver mSystemSettingsObserver = new ContentObserver(mMainThreadHandler) {
+            @Override
+            public void onChange(boolean selfChange) {
+                super.onChange(selfChange);
+                initClockRenderers();
+                invalidate();
             }
         };
 
@@ -336,6 +362,7 @@ public class FormWatchFace extends CanvasWatchFaceService {
                 paint.setStyle(Paint.Style.STROKE);
                 paint.setStrokeWidth(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 5,
                         getResources().getDisplayMetrics()));
+                paint.setStrokeJoin(Paint.Join.BEVEL);
                 paint.setColor(Color.WHITE);
                 mAmbientPaints.strokes[0] = mAmbientPaints.strokes[1] = mAmbientPaints.strokes[2]
                         = paint;
@@ -449,9 +476,11 @@ public class FormWatchFace extends CanvasWatchFaceService {
                     float bottom = (Float) mBottomBoundAnimator.getAnimatedValue();
                     float cy = bottom / 2;
                     float maxRadius = MathUtil.maxDistanceToCorner(0, 0, mWidth, mHeight, cx, cy);
-                    float radius = interpolate(decelerate3(
+                    float radius = interpolate(
+                            decelerate3(constrain(
                                     (currentTimeMillis - mUpdateThemeStartAnimTimeMillis)
-                                            * 1f / UPDATE_THEME_ANIM_DURATION),
+                                            * 1f / UPDATE_THEME_ANIM_DURATION,
+                                    0 , 1)),
                             0 , maxRadius);
 
                     mTempRectF.set(cx - radius, cy - radius, cx + radius, cy + radius);

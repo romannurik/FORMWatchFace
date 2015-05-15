@@ -311,7 +311,7 @@ public class FormClockRenderer {
     }
 
     String hourMinString(Calendar c) {
-        int h = c.get(Calendar.HOUR);
+        int h = c.get(mOptions.is24hour ? Calendar.HOUR_OF_DAY : Calendar.HOUR);
         if (!mOptions.is24hour && h == 0) {
             h = 12;
         }
@@ -1232,6 +1232,138 @@ public class FormClockRenderer {
                 @Override
                 public float getWidthAtProgress(float t) {
                     return interpolate(decelerate5(progress(t, 0.5f, 1)), 100, 0);
+                }
+            });
+
+            // 24 hour only
+            mGlyphMap.put("2_ ", new Glyph() {
+                @Override
+                public String getCanonicalStartGlyph() {
+                    return "2";
+                }
+
+                @Override
+                public String getCanonicalEndGlyph() {
+                    return " ";
+                }
+
+                @Override
+                public void draw(float t) {
+                    float d = decelerate5(progress(t, 0, 0.5f));
+                    float d1 = decelerate5(progress(t, 0.5f, 1.0f));
+
+                    // 2
+                    canvas.save();
+                    canvas.translate(interpolate(d, 0, -72), 0);
+
+                    if (d < 1) {
+                        canvas.save();
+                        canvas.translate(interpolate(d, 0, 72), 0);
+                        path.reset();
+                        path.moveTo(0, 144);
+                        path.lineTo(72, 72);
+                        path.lineTo(72, 144);
+                        path.lineTo(0, 144);
+                        drawPath(path, COLOR_3);
+                        canvas.restore();
+
+                        canvas.save();
+                        canvas.translate(0, interpolate(d, 0, 72));
+                        canvas.translate(108, 0);
+                        drawArc(-36, 0, 36, 72, -90, 180, true, COLOR_1);
+                        canvas.restore();
+
+                        canvas.save();
+                        drawRect(interpolate(d, 8, 72), interpolate(d, 0, 72),
+                                interpolate(d, 108, 144), interpolate(d, 72, 144), COLOR_1);
+                        canvas.restore();
+                    }
+
+                    canvas.save();
+                    scaleUniform(interpolate(d1, 1, 0), 72, 144);
+                    drawRect(72, 72, 144, 144, COLOR_2);
+                    canvas.restore();
+
+                    canvas.restore();
+                }
+
+                @Override
+                public float getWidthAtProgress(float t) {
+                    return interpolate(decelerate5(progress(t, 0, 0.5f)), 144,
+                            interpolate(decelerate5(progress(t, 0.5f, 1)), 72, 0));
+                }
+            });
+
+            // 24 hour only
+            mGlyphMap.put("3_0", new Glyph() {
+                @Override
+                public String getCanonicalStartGlyph() {
+                    return "3";
+                }
+
+                @Override
+                public String getCanonicalEndGlyph() {
+                    return "0";
+                }
+
+                @Override
+                public void draw(float t) {
+                    float d1 = 1 - decelerate5(progress(t, 0, 0.5f));
+                    float d2 = decelerate5(progress(t, 0.5f, 1));
+
+                    canvas.save();
+                    canvas.rotate(interpolate(d2, 0, 45), 72, 72);
+                    canvas.translate(interpolate(d1, interpolate(d2, 16, -8), 0), 0);
+
+                    if (d1 > 0) {
+                        // top part of 3 with triangle
+                        canvas.save();
+                        canvas.translate(0, interpolate(d1, 48, 0));
+                        float x = interpolate(d1, 48, 0);
+                        path.reset();
+                        path.moveTo(128 - x, 0);
+                        path.lineTo(80 - x, 48);
+                        path.lineTo(80 - x, 0);
+                        drawPath(path, COLOR_3);
+                        drawRect(interpolate(d1, 32, 0), 0, 80, 48, COLOR_3);
+                        canvas.restore();
+                    }
+
+                    // bottom rectangle in 3
+                    drawRect(
+                            interpolate(d1, interpolate(d2, 32, 80), 0), 96,
+                            80, 144, COLOR_1);
+
+                    // middle rectangle
+                    drawRect(
+                            interpolate(d2, 32, 80), 48,
+                            80, 96, COLOR_2);
+
+                    // 0
+
+                    scaleUniform(interpolate(d2, 2f/3, 1), 80, 144);
+
+                    // half-circles
+                    canvas.translate(8, 0);
+                    if (d2 > 0) {
+                        canvas.save();
+                        canvas.rotate(interpolate(d2, -180, 0), 72, 72);
+                        drawArc(
+                                0, 0,
+                                144, 144, 90, 180, true, COLOR_2);
+                        canvas.restore();
+                    }
+
+                    drawArc(
+                            0, 0,
+                            144, 144, -90, 180, true, COLOR_3);
+
+                    canvas.restore();
+                }
+
+                @Override
+                public float getWidthAtProgress(float t) {
+                    return interpolate(decelerate5(progress(t, 0, 0.5f)), 128, 144);
                 }
             });
 

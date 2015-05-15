@@ -23,8 +23,8 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.PointF;
 import android.os.Build;
+import android.text.format.DateFormat;
 import android.util.AttributeSet;
-import android.util.Log;
 import android.util.TypedValue;
 import android.view.View;
 
@@ -68,6 +68,7 @@ public class FormClockView extends View {
         options.charSpacing = a.getDimension(R.styleable.FormClockView_charSpacing,
                 TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 6,
                         getResources().getDisplayMetrics()));
+        options.is24hour = DateFormat.is24HourFormat(context);
 
         options.glyphAnimAverageDelay = 500;
         options.glyphAnimDuration = 2000;

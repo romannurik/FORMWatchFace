@@ -16,7 +16,7 @@
 
 <resources>
     <dimen name="main_clock_height">36dp</dimen>
-    <dimen name="main_clock_spacing">3dp</dimen>
+    <dimen name="main_clock_spacing">4dp</dimen>
     <integer name="main_clock_glyph_anim_delay">500</integer>
     <integer name="main_clock_glyph_anim_duration">2000</integer>
 
