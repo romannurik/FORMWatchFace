@@ -19,20 +19,28 @@ package net.nurik.roman.formwatchface.common;
 import android.annotation.TargetApi;
 import android.content.Context;
 import android.content.res.TypedArray;
+import android.database.ContentObserver;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.PointF;
 import android.os.Build;
+import android.os.Handler;
+import android.provider.Settings;
 import android.text.format.DateFormat;
 import android.util.AttributeSet;
 import android.util.TypedValue;
 import android.view.View;
 
 public class FormClockView extends View {
+    private Handler mMainThreadHandler = new Handler();
     private FormClockRenderer mHourMinRenderer;
     private FormClockRenderer mSecondsRenderer;
 
     private int mWidth, mHeight;
+
+    private int mColor1, mColor2, mColor3;
+
+    private FormClockRenderer.Options mHourMinOptions, mSecondsOptions;
 
     public FormClockView(Context context) {
         super(context);
@@ -60,57 +68,66 @@ public class FormClockView extends View {
         final TypedArray a = context.obtainStyledAttributes(attrs, R.styleable.FormClockView,
                 defStyleAttr, defStyleRes);
 
-        // General config
-        FormClockRenderer.Options options = new FormClockRenderer.Options();
-        options.textSize = a.getDimension(R.styleable.FormClockView_textSize,
+        // Configure renderers
+        mHourMinOptions = new FormClockRenderer.Options();
+        mHourMinOptions.textSize = a.getDimension(R.styleable.FormClockView_textSize,
                 TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 20,
                         getResources().getDisplayMetrics()));
-        options.charSpacing = a.getDimension(R.styleable.FormClockView_charSpacing,
+        mHourMinOptions.charSpacing = a.getDimension(R.styleable.FormClockView_charSpacing,
                 TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 6,
                         getResources().getDisplayMetrics()));
-        options.is24hour = DateFormat.is24HourFormat(context);
+        mHourMinOptions.is24hour = DateFormat.is24HourFormat(context);
 
-        options.glyphAnimAverageDelay = 500;
-        options.glyphAnimDuration = 2000;
+        mHourMinOptions.glyphAnimAverageDelay = 500;
+        mHourMinOptions.glyphAnimDuration = 2000;
 
-        // Set up renderers
-        mHourMinRenderer = new FormClockRenderer(options, null);
+        mSecondsOptions = new FormClockRenderer.Options(mHourMinOptions);
+        mSecondsOptions.onlySeconds = true;
+        mSecondsOptions.textSize /= 2;
+        mSecondsOptions.glyphAnimAverageDelay = 0;
+        mSecondsOptions.glyphAnimDuration = 750;
 
-        options = new FormClockRenderer.Options(options);
-        options.onlySeconds = true;
-        options.textSize /= 2;
-        options.glyphAnimAverageDelay = 0;
-        options.glyphAnimDuration = 750;
-
-        mSecondsRenderer = new FormClockRenderer(options, null);
-
-        setColors(
-                a.getColor(R.styleable.FormClockView_color1, 0xff000000),
-                a.getColor(R.styleable.FormClockView_color2, 0xff888888),
-                a.getColor(R.styleable.FormClockView_color3, 0xffcccccc));
+        mColor1 = a.getColor(R.styleable.FormClockView_color1, 0xff000000);
+        mColor2 = a.getColor(R.styleable.FormClockView_color2, 0xff888888);
+        mColor3 = a.getColor(R.styleable.FormClockView_color3, 0xffcccccc);
 
         a.recycle();
+
+        regenerateRenderers();
     }
 
-    public void setColors(int color1, int color2, int color3) {
+    private void regenerateRenderers() {
+        mHourMinRenderer = new FormClockRenderer(mHourMinOptions, null);
+        mSecondsRenderer = new FormClockRenderer(mSecondsOptions, null);
+        updatePaints();
+    }
+
+    private void updatePaints() {
         FormClockRenderer.ClockPaints paints = new FormClockRenderer.ClockPaints();
         Paint paint = new Paint();
         paint.setAntiAlias(true);
 
-        paint.setColor(color1);
+        paint.setColor(mColor1);
         paints.fills[0] = paint;
 
         paint = new Paint(paint);
-        paint.setColor(color2);
+        paint.setColor(mColor2);
         paints.fills[1] = paint;
 
         paint = new Paint(paint);
-        paint.setColor(color3);
+        paint.setColor(mColor3);
         paints.fills[2] = paint;
 
         mHourMinRenderer.setPaints(paints);
         mSecondsRenderer.setPaints(paints);
         invalidate();
+    }
+
+    public void setColors(int color1, int color2, int color3) {
+        mColor1 = color1;
+        mColor2 = color2;
+        mColor3 = color3;
+        updatePaints();
     }
 
     @Override
@@ -148,4 +165,36 @@ public class FormClockView extends View {
             postInvalidateDelayed(Math.min(timeToNextHourMinAnimation, timeToNextSecondsAnimation));
         }
     }
+
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        registerSystemSettingsListener();
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        super.onDetachedFromWindow();
+        unregisterSystemSettingsListener();
+    }
+
+    private void registerSystemSettingsListener() {
+        getContext().getContentResolver().registerContentObserver(
+                Settings.System.getUriFor(Settings.System.TIME_12_24),
+                false, mSystemSettingsObserver);
+    }
+
+    private void unregisterSystemSettingsListener() {
+        getContext().getContentResolver().unregisterContentObserver(mSystemSettingsObserver);
+    }
+
+    private ContentObserver mSystemSettingsObserver = new ContentObserver(mMainThreadHandler) {
+        @Override
+        public void onChange(boolean selfChange) {
+            super.onChange(selfChange);
+            mHourMinOptions.is24hour = DateFormat.is24HourFormat(getContext());
+            mSecondsOptions.is24hour = mHourMinOptions.is24hour;
+            regenerateRenderers();
+        }
+    };
 }

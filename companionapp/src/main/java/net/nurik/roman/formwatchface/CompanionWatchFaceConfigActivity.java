@@ -29,7 +29,6 @@ import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.LayerDrawable;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Handler;
 import android.preference.PreferenceManager;
 import android.support.v4.view.ViewPager;
 import android.support.v7.app.AppCompatActivity;
@@ -118,7 +117,7 @@ public class CompanionWatchFaceConfigActivity extends AppCompatActivity
         mAnimateClockContainerView.setVisibility(View.INVISIBLE);
 
         setupThemeList();
-        String themeId = mSharedPreferences.getString("theme", Themes.DEFAULT_THEME.id);
+        String themeId = mSharedPreferences.getString(ConfigHelper.KEY_THEME, Themes.DEFAULT_THEME.id);
         updateUIToSelectedTheme(themeId, false);
 
         registerSharedPrefsListener();
