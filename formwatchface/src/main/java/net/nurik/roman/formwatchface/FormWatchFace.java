@@ -43,6 +43,7 @@ import android.support.wearable.watchface.CanvasWatchFaceService;
 import android.support.wearable.watchface.WatchFaceService;
 import android.support.wearable.watchface.WatchFaceStyle;
 import android.text.format.DateFormat;
+import android.util.DisplayMetrics;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.SurfaceHolder;
@@ -88,6 +89,8 @@ public class FormWatchFace extends CanvasWatchFaceService {
         private ValueAnimator mSecondsAlphaAnimator = new ValueAnimator();
         private int mWidth = 0;
         private int mHeight = 0;
+        private int mDisplayMetricsWidth = 0;
+        private int mDisplayMetricsHeight = 0;
 
         private Handler mMainThreadHandler = new Handler();
 
@@ -216,6 +219,10 @@ public class FormWatchFace extends CanvasWatchFaceService {
             super.onSurfaceChanged(holder, format, width, height);
             mWidth = width;
             mHeight = height;
+
+            DisplayMetrics dm = getResources().getDisplayMetrics();
+            mDisplayMetricsWidth = dm.widthPixels;
+            mDisplayMetricsHeight = dm.heightPixels;
 
             mBottomBoundAnimator.cancel();
             mBottomBoundAnimator.setFloatValues(mHeight, mHeight);
@@ -553,8 +560,8 @@ public class FormWatchFace extends CanvasWatchFaceService {
             } else if (mDrawMuzeiBitmap && mMuzeiLoadedArtwork != null) {
                 canvas.drawRect(0, 0, mWidth, mHeight, mAmbientBackgroundPaint);
                 canvas.drawBitmap(mMuzeiLoadedArtwork.bitmap,
-                        (mWidth - mMuzeiLoadedArtwork.bitmap.getWidth()) / 2,
-                        (mHeight - mMuzeiLoadedArtwork.bitmap.getHeight()) / 2,
+                        (mDisplayMetricsWidth - mMuzeiLoadedArtwork.bitmap.getWidth()) / 2,
+                        (mDisplayMetricsHeight - mMuzeiLoadedArtwork.bitmap.getHeight()) / 2,
                         mMuzeiArtworkPaint);
             } else {
                 canvas.drawRect(0, 0, mWidth, mHeight, mBackgroundPaint);
