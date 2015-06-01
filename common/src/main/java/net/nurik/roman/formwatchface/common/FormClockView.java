@@ -142,19 +142,21 @@ public class FormClockView extends View {
         super.onDraw(canvas);
 
         mHourMinRenderer.updateTime();
-        PointF hourMinSize = mHourMinRenderer.measure();
+        PointF hourMinSize = mHourMinRenderer.measure(true);
         mHourMinRenderer.draw(canvas,
                 (mWidth - hourMinSize.x) / 2,
                 (mHeight - hourMinSize.y) / 2,
+                true,
                 false);
 
         mSecondsRenderer.updateTime();
-        PointF secondsSize = mSecondsRenderer.measure();
+        PointF secondsSize = mSecondsRenderer.measure(true);
         mSecondsRenderer.draw(canvas,
                 (mWidth + hourMinSize.x) / 2 - secondsSize.x,
                 (mHeight + hourMinSize.y) / 2
                         + TypedValue.applyDimension(5, TypedValue.COMPLEX_UNIT_DIP,
                         getResources().getDisplayMetrics()),
+                true,
                 false);
 
         long timeToNextSecondsAnimation = mSecondsRenderer.timeToNextAnimation();

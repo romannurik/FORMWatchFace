@@ -195,7 +195,7 @@ public class FormClockRenderer {
         return mMillisToNext - mAnimDuration;
     }
 
-    public PointF measure() {
+    public PointF measure(boolean allowAnimate) {
         mMeasuredSize.set(0, 0);
         layoutPass(new LayoutPassCallback() {
             @Override
@@ -203,17 +203,20 @@ public class FormClockRenderer {
                 mMeasuredSize.x = Math.max(mMeasuredSize.x, rect.right);
                 mMeasuredSize.y = Math.max(mMeasuredSize.y, rect.bottom);
             }
-        }, new RectF());
+        }, allowAnimate, new RectF());
         return mMeasuredSize;
     }
 
-    private void layoutPass(LayoutPassCallback cb, RectF rectF) {
+    private void layoutPass(LayoutPassCallback cb, boolean allowAnimate, RectF rectF) {
         float x = 0;
 
         for (int i = 0; i < mGlyphCount; i++) {
             Glyph glyph = mGlyphs[i];
 
             float t = getGlyphAnimProgress(i);
+            if (!allowAnimate && t > 0f) {
+                t = 1;
+            }
             float glyphWidth = glyph.getWidthAtProgress(t) * mOptions.textSize / Font.DRAWHEIGHT;
 
             rectF.set(x, 0, x + glyphWidth, mOptions.textSize);
@@ -224,7 +227,8 @@ public class FormClockRenderer {
         }
     }
 
-    public void draw(final Canvas canvas, float left, float top, final boolean offscreenGlyphs) {
+    public void draw(final Canvas canvas, float left, float top, final boolean allowAnimate,
+                     final boolean offscreenGlyphs) {
         mFont.canvas = offscreenGlyphs ? mOffsGlyphCanvas : canvas;
 
         int sc = canvas.save();
@@ -237,7 +241,7 @@ public class FormClockRenderer {
 
                 if (glyphAnimProgress == 0) {
                     glyph = mFont.mGlyphMap.get(glyph.getCanonicalStartGlyph());
-                } else if (glyphAnimProgress == 1) {
+                } else if (!allowAnimate || glyphAnimProgress == 1) {
                     glyph = mFont.mGlyphMap.get(glyph.getCanonicalEndGlyph());
                     glyphAnimProgress = 0;
                 }
@@ -272,7 +276,7 @@ public class FormClockRenderer {
                 }
                 canvas.restoreToCount(sc);
             }
-        }, new RectF());
+        }, allowAnimate, new RectF());
 
         canvas.restoreToCount(sc);
 

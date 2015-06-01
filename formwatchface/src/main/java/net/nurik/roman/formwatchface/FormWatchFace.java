@@ -103,6 +103,7 @@ public class FormWatchFace extends CanvasWatchFaceService {
         private FormClockRenderer mHourMinRenderer;
         private FormClockRenderer mSecondsRenderer;
         private long mUpdateThemeStartAnimTimeMillis;
+        private long mLastDrawTimeMin;
         private String mDateStr;
 
         /**
@@ -425,7 +426,6 @@ public class FormWatchFace extends CanvasWatchFaceService {
         public void onTimeTick() {
             super.onTimeTick();
             LOGD(TAG, "onTimeTick: ambient = " + isInAmbientMode());
-            updateDateStr();
             postInvalidate();
         }
 
@@ -458,6 +458,12 @@ public class FormWatchFace extends CanvasWatchFaceService {
 
             // Figure out what to animate
             long currentTimeMillis = System.currentTimeMillis();
+            long currentTimeMin = currentTimeMillis / 60000;
+            if (currentTimeMin != mLastDrawTimeMin) {
+                mLastDrawTimeMin = currentTimeMin;
+                updateDateStr();
+            }
+
             mHourMinRenderer.setPaints(ambientMode ? mAmbientPaints : mNormalPaints);
             mSecondsRenderer.setPaints(ambientMode ? mAmbientPaints : mNormalPaints);
 
@@ -555,6 +561,8 @@ public class FormWatchFace extends CanvasWatchFaceService {
             boolean ambientMode = isInAmbientMode();
             boolean offscreenGlyphs = !ambientMode;
 
+            boolean allowAnimate = !ambientMode;
+
             if (ambientMode) {
                 canvas.drawRect(0, 0, mWidth, mHeight, mAmbientBackgroundPaint);
             } else if (mDrawMuzeiBitmap && mMuzeiLoadedArtwork != null) {
@@ -569,15 +577,16 @@ public class FormWatchFace extends CanvasWatchFaceService {
 
             float bottom = (Float) mBottomBoundAnimator.getAnimatedValue();
 
-            PointF hourMinSize = mHourMinRenderer.measure();
+            PointF hourMinSize = mHourMinRenderer.measure(allowAnimate);
             mHourMinRenderer.draw(canvas,
                     (mWidth - hourMinSize.x) / 2, (bottom - hourMinSize.y) / 2,
+                    allowAnimate,
                     offscreenGlyphs);
 
             float clockSecondsSpacing = getResources().getDimension(R.dimen.clock_seconds_spacing);
             float secondsOpacity = (Float) mSecondsAlphaAnimator.getAnimatedValue();
             if (mShowSeconds && !ambientMode && secondsOpacity > 0) {
-                PointF secondsSize = mSecondsRenderer.measure();
+                PointF secondsSize = mSecondsRenderer.measure(allowAnimate);
                 int sc = -1;
                 if (secondsOpacity != 1) {
                     sc = canvas.saveLayerAlpha(0, 0, canvas.getWidth(), canvas.getHeight(),
@@ -586,6 +595,7 @@ public class FormWatchFace extends CanvasWatchFaceService {
                 mSecondsRenderer.draw(canvas,
                         (mWidth + hourMinSize.x) / 2 - secondsSize.x,
                         (bottom + hourMinSize.y) / 2 + clockSecondsSpacing,
+                        allowAnimate,
                         offscreenGlyphs);
                 if (sc >= 0) {
                     canvas.restoreToCount(sc);
