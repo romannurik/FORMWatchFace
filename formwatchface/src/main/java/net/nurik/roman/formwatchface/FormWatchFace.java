@@ -141,8 +141,18 @@ public class FormWatchFace extends CanvasWatchFaceService {
 
             registerSystemSettingsListener();
             registerSharedPrefsListener();
+            registerTimeZoneReceiver();
 
             initMuzei();
+        }
+
+        @Override
+        public void onDestroy() {
+            super.onDestroy();
+            unregisterSystemSettingsListener();
+            unregisterSharedPrefsListener();
+            unregisterTimeZoneReceiver();
+            destroyMuzei();
         }
 
         private void initClockRenderers() {
@@ -252,14 +262,6 @@ public class FormWatchFace extends CanvasWatchFaceService {
             }
         }
 
-        @Override
-        public void onDestroy() {
-            super.onDestroy();
-            unregisterSystemSettingsListener();
-            unregisterSharedPrefsListener();
-            destroyMuzei();
-        }
-
         private void initMuzei() {
             mMuzeiArtworkPaint = new Paint();
             mMuzeiArtworkPaint.setAlpha(102);
@@ -316,7 +318,7 @@ public class FormWatchFace extends CanvasWatchFaceService {
             public void onChange(boolean selfChange) {
                 super.onChange(selfChange);
                 initClockRenderers();
-                invalidate();
+                postInvalidate();
             }
         };
 
@@ -336,6 +338,27 @@ public class FormWatchFace extends CanvasWatchFaceService {
             public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
                 if (ConfigHelper.isConfigPrefKey(key)) {
                     handleConfigUpdated();
+                }
+            }
+        };
+
+        private void registerTimeZoneReceiver() {
+            IntentFilter timeZoneIntentFilter = new IntentFilter();
+            timeZoneIntentFilter.addAction(Intent.ACTION_TIMEZONE_CHANGED);
+            registerReceiver(mTimeZoneReceiver, timeZoneIntentFilter);
+        }
+
+        private void unregisterTimeZoneReceiver() {
+            unregisterReceiver(mTimeZoneReceiver);
+        }
+
+        private final BroadcastReceiver mTimeZoneReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                final String action = intent.getAction();
+                if (Intent.ACTION_TIMEZONE_CHANGED.equals(action)) {
+                    initClockRenderers();
+                    postInvalidate();
                 }
             }
         };
