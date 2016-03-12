@@ -17,7 +17,6 @@
 package net.nurik.roman.formwatchface.common;
 
 import android.graphics.Rect;
-import android.util.FloatMath;
 
 public class MathUtil {
     private MathUtil() {
@@ -37,7 +36,7 @@ public class MathUtil {
     }
 
     public static float distance(float x1, float y1, float x2, float y2) {
-        return FloatMath.sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
+        return (float) Math.sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
     }
 
     public static float interpolate(float f, float min, float max) {
@@ -45,19 +44,19 @@ public class MathUtil {
     }
 
     public static float accelerate5(float t) {
-        return FloatMath.pow(t, 5);
+        return (float) Math.pow(t, 5);
     }
 
     public static float decelerate5(float t) {
-        return 1 - FloatMath.pow(1 - t, 5);
+        return (float) (1 - Math.pow(1 - t, 5));
     }
 
     public static float decelerate3(float t) {
-        return 1 - FloatMath.pow(1 - t, 3);
+        return (float) (1 - Math.pow(1 - t, 3));
     }
 
     public static float decelerate2(float t) {
-        return 1 - FloatMath.pow(1 - t, 2);
+        return (float) (1 - Math.pow(1 - t, 2));
     }
 
     public static float progress(float v, float min, float max) {

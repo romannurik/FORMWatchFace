@@ -30,6 +30,7 @@ import android.graphics.drawable.LayerDrawable;
 import android.os.Build;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
+import android.support.design.widget.TabLayout;
 import android.support.v4.view.ViewPager;
 import android.support.v7.app.AppCompatActivity;
 import android.util.TypedValue;
@@ -48,7 +49,6 @@ import net.nurik.roman.formwatchface.common.config.Themes;
 import net.nurik.roman.formwatchface.common.config.UpdateConfigIntentService;
 import net.nurik.roman.formwatchface.ui.ScrimInsetsFrameLayout;
 import net.nurik.roman.formwatchface.ui.SimplePagerHelper;
-import net.nurik.roman.formwatchface.ui.SlidingTabLayout;
 
 import java.util.ArrayList;
 
@@ -142,14 +142,10 @@ public class CompanionWatchFaceConfigActivity extends AppCompatActivity
         helper.addPage(R.string.title_theme, R.id.config_theme_container);
         helper.addPage(R.string.title_complications, R.id.config_complications_container);
 
-        SlidingTabLayout slidingTabLayout = (SlidingTabLayout) findViewById(R.id.tabs);
-        slidingTabLayout.setCustomTabView(R.layout.tab_indicator, android.R.id.text1);
+        TabLayout slidingTabLayout = (TabLayout) findViewById(R.id.tabs);
+        slidingTabLayout.setupWithViewPager(pager);
 
-        Resources res = getResources();
-        slidingTabLayout.setSelectedIndicatorColors(res.getColor(R.color.tab_selected_strip));
-        slidingTabLayout.setViewPager(pager);
-
-        slidingTabLayout.setOnPageChangeListener(new ViewPager.SimpleOnPageChangeListener() {
+        pager.addOnPageChangeListener(new ViewPager.SimpleOnPageChangeListener() {
             @Override
             public void onPageScrolled(int position, float positionOffset, int positionOffsetPixels) {
                 super.onPageScrolled(position, positionOffset, positionOffsetPixels);
